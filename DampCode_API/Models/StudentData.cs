@@ -1,6 +1,6 @@
 ﻿namespace DampCode_API.Models
 {
-    public class Dados_Aluno
+    public class StudentData
     {
         public int? Matricula { get; set; }
         public string? Nome { get; set; }

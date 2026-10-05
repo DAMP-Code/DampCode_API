@@ -1,7 +1,7 @@
 ﻿using DampCode_API.Models;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
-using WebApiMongoDbDemo.Data;
+using DampCode_API.Data;
 using Microsoft.AspNetCore.Http;
 
 namespace DampCode_API.Controllers
@@ -18,7 +18,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpGet]
-        public async Task<IEnumerable<User>> GetAllUsers()
+        [ActionName("GetAllUsers")]
+        public async Task<IEnumerable<User>> getAllUsers()
         {
 
             // sem filtros
@@ -31,7 +32,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<User>> GetUserById(string id)
+        [ActionName("GetUserById")]
+        public async Task<ActionResult<User>> getUserById(string id)
         {
             var user = await _users.Find(u => u.Id == id).FirstOrDefaultAsync();
 
@@ -44,7 +46,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUser(string id, [FromBody] User updatedUser)
+        [ActionName("UpdateUser")]
+        public async Task<IActionResult> updateUser(string id, [FromBody] User updatedUser)
         {
             if (id != updatedUser.Id)
             {
@@ -62,7 +65,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteUser(string id)
+        [ActionName("DeleteUser")]
+        public async Task<IActionResult> deleteUser(string id)
         {
             var result = await _users.DeleteOneAsync(u => u.Id == id);
 

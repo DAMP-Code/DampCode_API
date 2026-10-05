@@ -1,6 +1,6 @@
 ﻿using MongoDB.Driver; // Importa o driver do MongoDB para C#
 
-namespace WebApiMongoDbDemo.Data
+namespace DampCode_API.Data
 {
     public class MongoDbService
     {

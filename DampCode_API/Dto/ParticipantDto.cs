@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace DampCode_API.Dto
 {
-    public class ParticipanteDto
+    public class ParticipantDto
     {
         public  string? Name { get; set; }
         public  string? Email { get; set; }

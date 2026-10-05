@@ -19,7 +19,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpGet(Name = "GetWeatherForecast")]
-        public IEnumerable<WeatherForecast> Get()
+        [ActionName("Get")]
+        public IEnumerable<WeatherForecast> get()
         {
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast
             {

@@ -4,7 +4,7 @@ using DnsClient;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
-using WebApiMongoDbDemo.Data;
+using DampCode_API.Data;
 
 namespace DampCode_API.Controllers
 {
@@ -33,7 +33,8 @@ namespace DampCode_API.Controllers
 
         // Create participante
         [HttpPost("register/participante")]
-        public async Task<IActionResult> RegisterParticipant(ParticipanteDto dto)
+        [ActionName("RegisterParticipant")]
+        public async Task<IActionResult> registerParticipant(ParticipantDto dto)
         {
             var user = new User
             {
@@ -60,7 +61,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpPost("register/empresa")]
-        public async Task<IActionResult> RegisterEmpresa(EmpresaDto dto) {
+        [ActionName("RegisterEmpresa")]
+        public async Task<IActionResult> registerCompany(CompanyDto dto) {
             var user = new User
             {
                 Name = dto.Name,
@@ -76,7 +78,8 @@ namespace DampCode_API.Controllers
         }
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginDto dto)
+        [ActionName("Login")]
+        public async Task<IActionResult> login(LoginDto dto)
         {
             try
             {
@@ -87,9 +90,9 @@ namespace DampCode_API.Controllers
                 if (user == null)
                     return Unauthorized("Email ou senha inválidos");
 
-                bool senhaValida = BCrypt.Net.BCrypt.EnhancedVerify(dto.Password, user.Password);
+                bool isPasswordValid = BCrypt.Net.BCrypt.EnhancedVerify(dto.Password, user.Password);
 
-                if (!senhaValida)
+                if (!isPasswordValid)
                     return Unauthorized("Email ou senha inválidos");
 
                 return Ok(new

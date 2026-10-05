@@ -1,6 +1,6 @@
 ﻿namespace DampCode_API.Dto
 {
-    public class CreateHackathonDTO
+    public class CreateHackathonDto
     {
         public string? Titulo { get; set; }
 
