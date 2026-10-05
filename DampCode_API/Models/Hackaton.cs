@@ -1,58 +1,86 @@
-﻿using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
+﻿using MongoDB.Driver;
 
-namespace DampCode_API.Models
+namespace DampCode_API.Models;
+
+public sealed class hackathon
 {
-    [BsonIgnoreExtraElements]
-    public class Hackathon
-    {
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string? HackathonId { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid();
 
-        [BsonElement("titulo")]
-        public string? Titulo { get; set; }
+    public Guid companyId { get; set; }
 
-        [BsonElement("descricao")]
-        public string? Descricao { get; set; }
+    public Guid createdByAccountId { get; set; }
 
-        [BsonElement("empresa")]
-        public string? Empresa { get; set; }
+    public required string title { get; set; }
 
-        [BsonElement("area")]
-        public string? Area { get; set; }
+    public required string slug { get; set; }
 
-        [BsonElement("tecnologias")]
-        public List<string>? Tecnologias { get; set; }
+    public required string description { get; set; }
 
-        [BsonElement("metodo")]
-        public string? Metodo { get; set; }
+    public required string area { get; set; }
 
-        [BsonElement("ranking")]
-        public string? Ranking { get; set; }
+    public required string participationMode { get; set; }
 
-        [BsonElement("premiacao")]
-        public decimal Premiacao { get; set; }
+    public required string status { get; set; }
 
-        [BsonElement("corPrincipal")]
-        public string? corPrincipal { get; set; }
+    public string? evaluationMethod { get; set; }
 
-        [BsonElement("corSecundaria")]
-        public string? corSecundaria { get; set; }
+    public DateTime? startsAt { get; set; }
 
-        [BsonElement("corFundo")]
-        public string? corFundo { get; set; }
+    public DateTime? endsAt { get; set; }
 
-        [BsonElement("Logo")]
-        public string? Logo { get; set; }
+    public DateTime? reviewEndsAt { get; set; }
 
-        [BsonElement("DataCriacao")]
-        public DateTime DataCriacao { get; set; }
+    public DateTime? scheduledAt { get; set; }
 
-        [BsonElement("DataFinal")]
-        public DateTime DataFinal { get; set; }
+    public DateTime? closedAt { get; set; }
 
-        [BsonElement("status")]
-        public bool status { get; set; }
-    }
+    public DateTime? cancelledAt { get; set; }
+
+    public string? primaryColor { get; set; }
+
+    public string? secondaryColor { get; set; }
+
+    public string? backgroundColor { get; set; }
+
+    public string? logoStorageKey { get; set; }
+
+    public DateTime createdAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime updatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime? deletedAt { get; set; }
+
+    // Empresa proprietária do Hackathon.
+    public company company { get; set; } = null!;
+
+    // Conta responsável pela criação.
+    public accounts createdByAccount { get; set; } = null!;
+
+    // Tecnologias utilizadas/classificadoras do Hackathon.
+    public ICollection<hackathonTechnology> technologies { get; set; }
+        = new List<hackathonTechnology>();
+
+    // Etapas ordenadas do Hackathon.
+    public ICollection<hackathonStage> stages { get; set; }
+        = new List<hackathonStage>();
+
+    // Prêmios oferecidos.
+    public ICollection<prize> prizes { get; set; }
+        = new List<prize>();
+
+    // Equipes criadas especificamente para este Hackathon.
+    public ICollection<hackathonTeam> teams { get; set; }
+        = new List<hackathonTeam>();
+
+    // Inscrições oficiais.
+    public ICollection<participation> participations { get; set; }
+        = new List<participation>();
+
+    // Solicitações de cancelamento.
+    public ICollection<cancellationRequest> cancellationRequests { get; set; }
+        = new List<cancellationRequest>();
+
+    // Eventos que afetaram a reputação da empresa relacionados ao Hackathon.
+    public ICollection<companyReputationEvent> reputationEvents { get; set; }
+        = new List<companyReputationEvent>();
 }

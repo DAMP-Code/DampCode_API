@@ -10,15 +10,15 @@ namespace DampCode_API.Controllers
     [ApiController]
     public class UsersController : ControllerBase
     {
-        private readonly IMongoCollection<User> _users;
+        private readonly IMongoCollection<Accounts> _users;
 
         public UsersController(MongoDbService mongoDbService)
         {
-            _users = mongoDbService.Database.GetCollection<User>("users");
+            _users = mongoDbService.Database.GetCollection<Accounts>("users");
         }
 
         [HttpGet]
-        public async Task<IEnumerable<User>> GetAllUsers()
+        public async Task<IEnumerable<Accounts>> GetAllUsers()
         {
 
             // sem filtros
@@ -31,7 +31,7 @@ namespace DampCode_API.Controllers
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<User>> GetUserById(string id)
+        public async Task<ActionResult<Accounts>> GetUserById(string id)
         {
             var user = await _users.Find(u => u.Id == id).FirstOrDefaultAsync();
 
@@ -44,7 +44,7 @@ namespace DampCode_API.Controllers
         }
 
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUser(string id, [FromBody] User updatedUser)
+        public async Task<IActionResult> UpdateUser(string id, [FromBody] Accounts updatedUser)
         {
             if (id != updatedUser.Id)
             {

@@ -12,10 +12,10 @@ namespace DampCode_API.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly IMongoCollection<User> _users;
+        private readonly IMongoCollection<Accounts> _users;
         public AuthController(MongoDbService mongoDbService)
         {
-            _users = mongoDbService.Database.GetCollection<User>("users");
+            _users = mongoDbService.Database.GetCollection<Accounts>("users");
         }
 
         //CREATE
@@ -35,7 +35,7 @@ namespace DampCode_API.Controllers
         [HttpPost("register/participante")]
         public async Task<IActionResult> RegisterParticipant(ParticipanteDto dto)
         {
-            var user = new User
+            var user = new Accounts
             {
                 Name = dto.Name,
                 Email = dto.Email,
@@ -61,7 +61,7 @@ namespace DampCode_API.Controllers
 
         [HttpPost("register/empresa")]
         public async Task<IActionResult> RegisterEmpresa(EmpresaDto dto) {
-            var user = new User
+            var user = new Accounts
             {
                 Name = dto.Name,
                 Email = dto.Email,
