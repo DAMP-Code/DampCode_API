@@ -8,6 +8,7 @@ public sealed class hackathon
 
     public Guid companyId { get; set; }
 
+
     public Guid createdByAccountId { get; set; }
 
     public required string title { get; set; }

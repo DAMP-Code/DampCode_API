@@ -30,6 +30,7 @@ public sealed class userProfile
     public ICollection<companyMembership> companyMemberships { get; set; }
         = new List<companyMembership>();
 
+
     // Tecnologias dominadas/declaradas pelo usuário.
     public ICollection<userTechnology> technologies { get; set; }
         = new List<userTechnology>();

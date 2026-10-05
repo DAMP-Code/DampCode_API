@@ -13,6 +13,7 @@ public sealed class accounts
 
     public required string normalizedEmail { get; set; }
 
+
     public required string passwordHash { get; set; }
 
     public required string accountType { get; set; }

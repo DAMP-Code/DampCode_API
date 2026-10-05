@@ -8,6 +8,7 @@ public sealed class submission
 
     public Guid stageId { get; set; }
 
+
     public required string status { get; set; }
 
     public int currentVersion { get; set; }
