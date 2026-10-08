@@ -1,10 +1,12 @@
 using DampCode_API.Data;
 using DampCode_API.Dto;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace DampCode_API.Controllers;
 
+[Authorize]
 [Route("api/[controller]")]
 [ApiController]
 public sealed class UsersController(DampCodeDbContext dbContext) : ControllerBase

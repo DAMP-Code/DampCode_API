@@ -1,7 +1,9 @@
+using DampCode_API.Authentication;
 using DampCode_API.Data;
 using DampCode_API.Dto;
 using DampCode_API.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +15,21 @@ builder.Services.AddSwaggerGen(options =>
         : type == typeof(CompanyDto) ? "EmpresaDto"
         : type == typeof(CreateHackathonDto) ? "CreateHackathonDTO"
         : type.Name);
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Cole apenas o token retornado pelo login, sem o prefixo Bearer."
+    });
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
+            Array.Empty<string>()
+        }
+    });
 });
 builder.Services.AddSingleton<MongoDbService>();
 builder.Services.AddDbContext<DampCodeDbContext>((serviceProvider, options) =>
@@ -27,6 +44,7 @@ builder.Services.AddDbContext<DampCodeDbContext>((serviceProvider, options) =>
     }
     options.UseNpgsql(connectionString);
 });
+builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.AddCors(options =>
@@ -46,6 +64,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors("AllowReact");
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
+
+// Exposto para os testes de integração (WebApplicationFactory<Program>).
+public partial class Program;
