@@ -1,3 +1,4 @@
+using DampCode_API.Authentication;
 using DampCode_API.Data;
 using DampCode_API.Dto;
 using DampCode_API.Models;
@@ -125,11 +126,5 @@ public sealed class AuthService(DampCodeDbContext dbContext) : IAuthService
     private static string OnlyDigits(string value) => new(value.Where(char.IsDigit).ToArray());
     private static AuthServiceResult Conflict(string message) => new(false, Error: AuthServiceError.Conflict, Message: message);
     private static AuthServiceResult Success(Account account, string name) =>
-        new(true, new AuthResponseDto(account.Id, name, account.Email, account.AccountType switch
-        {
-            AccountType.Company => "empresa",
-            AccountType.Participant => "participante",
-            AccountType.Admin => "admin",
-            _ => throw new ArgumentOutOfRangeException(nameof(account.AccountType))
-        }));
+        new(true, new AuthResponseDto(account.Id, name, account.Email, AccountRoles.ToFrontRole(account.AccountType)));
 }
