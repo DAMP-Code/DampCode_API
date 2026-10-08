@@ -15,9 +15,9 @@ namespace DampCode_API.Services
             _configuration = configuration;
         }
 
-        public string generateToken(User user, DateTime expiresAt)
+        public string generateToken(Account account, DateTime expiresAt)
         {
-            ArgumentNullException.ThrowIfNull(user);
+            ArgumentNullException.ThrowIfNull(account);
 
             var secret = _configuration["Jwt:Secret"];
             if (string.IsNullOrWhiteSpace(secret))
@@ -32,8 +32,8 @@ namespace DampCode_API.Services
             if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
                 throw new InvalidOperationException("JWT Issuer e Audience devem ser configurados.");
 
-            if (string.IsNullOrWhiteSpace(user.Id) || string.IsNullOrWhiteSpace(user.Name) || string.IsNullOrWhiteSpace(user.Role))
-                throw new ArgumentException("Usuário deve possuir ID, nome e papel para gerar um token.", nameof(user));
+            if (string.IsNullOrWhiteSpace(account.Email))
+                throw new ArgumentException("A conta deve possuir e-mail para gerar um token.", nameof(account));
 
             if (expiresAt.Kind == DateTimeKind.Unspecified)
                 throw new ArgumentException("Informe a expiração com fuso horário definido.", nameof(expiresAt));
@@ -48,9 +48,9 @@ namespace DampCode_API.Services
             // Mantém o papel existente do usuário, sem atribuir novas permissões.
             var claims = new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, user.Id),
-                new Claim(ClaimTypes.Name, user.Name),
-                new Claim(ClaimTypes.Role, user.Role)
+                new Claim(ClaimTypes.NameIdentifier, account.Id.ToString()),
+                new Claim(ClaimTypes.Name, account.Email),
+                new Claim(ClaimTypes.Role, account.AccountType.ToString())
             };
 
             var token = new JwtSecurityToken(

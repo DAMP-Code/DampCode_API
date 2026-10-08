@@ -1,58 +1,30 @@
-﻿using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
+namespace DampCode_API.Models;
 
-namespace DampCode_API.Models
+// Entidade-base preservada para a próxima etapa. Ainda não faz parte do DbContext
+// porque publicação e gerenciamento dependem da autorização empresarial.
+public sealed class Hackathon
 {
-    [BsonIgnoreExtraElements]
-    public class Hackathon
-    {
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string? HackathonId { get; set; }
-
-        [BsonElement("titulo")]
-        public string? Titulo { get; set; }
-
-        [BsonElement("descricao")]
-        public string? Descricao { get; set; }
-
-        [BsonElement("empresa")]
-        public string? Empresa { get; set; }
-
-        [BsonElement("area")]
-        public string? Area { get; set; }
-
-        [BsonElement("tecnologias")]
-        public List<string>? Tecnologias { get; set; }
-
-        [BsonElement("metodo")]
-        public string? Metodo { get; set; }
-
-        [BsonElement("ranking")]
-        public string? Ranking { get; set; }
-
-        [BsonElement("premiacao")]
-        public decimal Premiacao { get; set; }
-
-        [BsonElement("corPrincipal")]
-        public string? corPrincipal { get; set; }
-
-        [BsonElement("corSecundaria")]
-        public string? corSecundaria { get; set; }
-
-        [BsonElement("corFundo")]
-        public string? corFundo { get; set; }
-
-        [BsonElement("Logo")]
-        public string? Logo { get; set; }
-
-        [BsonElement("DataCriacao")]
-        public DateTime DataCriacao { get; set; }
-
-        [BsonElement("DataFinal")]
-        public DateTime DataFinal { get; set; }
-
-        [BsonElement("status")]
-        public bool status { get; set; }
-    }
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Guid CreatedByAccountId { get; set; }
+    public required string Title { get; set; }
+    public required string Slug { get; set; }
+    public required string Description { get; set; }
+    public required string Area { get; set; }
+    public required string ParticipationMode { get; set; }
+    public required string Status { get; set; }
+    public string? EvaluationMethod { get; set; }
+    public DateTime? StartsAt { get; set; }
+    public DateTime? EndsAt { get; set; }
+    public DateTime? ReviewEndsAt { get; set; }
+    public DateTime? ScheduledAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    public string? PrimaryColor { get; set; }
+    public string? SecondaryColor { get; set; }
+    public string? BackgroundColor { get; set; }
+    public string? LogoStorageKey { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? DeletedAt { get; set; }
 }

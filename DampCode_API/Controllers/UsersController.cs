@@ -1,81 +1,42 @@
-﻿using DampCode_API.Models;
-using Microsoft.AspNetCore.Mvc;
-using MongoDB.Driver;
 using DampCode_API.Data;
-using Microsoft.AspNetCore.Http;
+using DampCode_API.Dto;
+using DampCode_API.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
-namespace DampCode_API.Controllers
+namespace DampCode_API.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public sealed class UsersController(DampCodeDbContext dbContext) : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class UsersController : ControllerBase
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<UserResponseDto>>> GetAllUsers(CancellationToken cancellationToken)
     {
-        private readonly IMongoCollection<User> _users;
+        var users = await dbContext.Accounts.AsNoTracking().Where(account => account.DeletedAt == null)
+            .Select(account => new UserResponseDto(
+                account.Id,
+                account.AccountType == AccountType.Company ? account.PrimaryCompany!.Name : account.UserProfile!.Name,
+                account.Email,
+                account.AccountType == AccountType.Company ? "empresa" : "participante",
+                account.UserProfile == null ? null : account.UserProfile.Level,
+                account.UserProfile == null ? null : account.UserProfile.Xp))
+            .ToListAsync(cancellationToken);
+        return Ok(users);
+    }
 
-        public UsersController(MongoDbService mongoDbService)
-        {
-            _users = mongoDbService.Database.GetCollection<User>("users");
-        }
-
-        [HttpGet]
-        [ActionName("GetAllUsers")]
-        public async Task<IEnumerable<User>> getAllUsers()
-        {
-
-            // sem filtros
-            // var users = await _users.Find(FilterDefinition<User>.Empty).ToListAsync();
-
-            // aceita todos
-            var users = await _users.Find(_ => true).ToListAsync();
-
-            return users;
-        }
-
-        [HttpGet("{id}")]
-        [ActionName("GetUserById")]
-        public async Task<ActionResult<User>> getUserById(string id)
-        {
-            var user = await _users.Find(u => u.Id == id).FirstOrDefaultAsync();
-
-            if (user == null)
-            {
-                return NotFound(new { message = "Usuário não encontrado!" });
-            }
-
-            return Ok(user);
-        }
-
-        [HttpPut("{id}")]
-        [ActionName("UpdateUser")]
-        public async Task<IActionResult> updateUser(string id, [FromBody] User updatedUser)
-        {
-            if (id != updatedUser.Id)
-            {
-                return BadRequest(new { message = "O ID da URL não corresponde ao ID do usuário." });
-            }
-
-            var result = await _users.ReplaceOneAsync(u => u.Id == id, updatedUser);
-
-            if (result.MatchedCount == 0)
-            {
-                return NotFound(new { message = "Usuário não encontrado para atualização." });
-            }
-
-            return Ok ();
-        }
-
-        [HttpDelete("{id}")]
-        [ActionName("DeleteUser")]
-        public async Task<IActionResult> deleteUser(string id)
-        {
-            var result = await _users.DeleteOneAsync(u => u.Id == id);
-
-            if (result.DeletedCount == 0)
-            {
-                return NotFound(new { message = "Usuário não encontrado." });
-            }
-
-            return Ok();
-        }
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<UserResponseDto>> GetUserById(Guid id, CancellationToken cancellationToken)
+    {
+        var user = await dbContext.Accounts.AsNoTracking().Where(account => account.Id == id && account.DeletedAt == null)
+            .Select(account => new UserResponseDto(
+                account.Id,
+                account.AccountType == AccountType.Company ? account.PrimaryCompany!.Name : account.UserProfile!.Name,
+                account.Email,
+                account.AccountType == AccountType.Company ? "empresa" : "participante",
+                account.UserProfile == null ? null : account.UserProfile.Level,
+                account.UserProfile == null ? null : account.UserProfile.Xp))
+            .SingleOrDefaultAsync(cancellationToken);
+        return user is null ? NotFound(new { message = "Usuário não encontrado." }) : Ok(user);
     }
 }
