@@ -1,67 +1,47 @@
+using DampCode_API.Authentication;
 using DampCode_API.Models;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 
-namespace DampCode_API.Services
+namespace DampCode_API.Services;
+
+public sealed class TokenService : ITokenService
 {
-    public class TokenService
+    private readonly JwtOptions _options;
+    private readonly SigningCredentials _credentials;
+    private readonly JsonWebTokenHandler _handler = new();
+
+    public TokenService(IOptions<JwtOptions> options)
     {
-        private readonly IConfiguration _configuration;
+        _options = options.Value;
+        if (!_options.HasValidSecret()) throw new InvalidOperationException(JwtOptions.InvalidSecretMessage);
+        _credentials = new SigningCredentials(_options.CreateSigningKey(), SecurityAlgorithms.HmacSha256);
+    }
 
-        public TokenService(IConfiguration configuration)
+    public TokenResult GenerateToken(Account account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+        var issuedAt = DateTime.UtcNow;
+        var expiresAt = issuedAt.AddMinutes(_options.ExpirationMinutes);
+
+        // Somente identificadores estáveis; nome, empresa e permissões são lidos do banco.
+        var token = _handler.CreateToken(new SecurityTokenDescriptor
         {
-            _configuration = configuration;
-        }
-
-        public string generateToken(Account account, DateTime expiresAt)
-        {
-            ArgumentNullException.ThrowIfNull(account);
-
-            var secret = _configuration["Jwt:Secret"];
-            if (string.IsNullOrWhiteSpace(secret))
-                throw new InvalidOperationException("JWT Secret não configurada.");
-
-            var keyBytes = Encoding.UTF8.GetBytes(secret);
-            if (keyBytes.Length < 32)
-                throw new InvalidOperationException("JWT Secret deve ter pelo menos 32 bytes para HS256.");
-
-            var issuer = _configuration["Jwt:Issuer"];
-            var audience = _configuration["Jwt:Audience"];
-            if (string.IsNullOrWhiteSpace(issuer) || string.IsNullOrWhiteSpace(audience))
-                throw new InvalidOperationException("JWT Issuer e Audience devem ser configurados.");
-
-            if (string.IsNullOrWhiteSpace(account.Email))
-                throw new ArgumentException("A conta deve possuir e-mail para gerar um token.", nameof(account));
-
-            if (expiresAt.Kind == DateTimeKind.Unspecified)
-                throw new ArgumentException("Informe a expiração com fuso horário definido.", nameof(expiresAt));
-
-            var expiresAtUtc = expiresAt.ToUniversalTime();
-            if (expiresAtUtc <= DateTime.UtcNow)
-                throw new ArgumentOutOfRangeException(nameof(expiresAt), "A expiração deve estar no futuro.");
-
-            var key = new SymmetricSecurityKey(keyBytes);
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-            // Mantém o papel existente do usuário, sem atribuir novas permissões.
-            var claims = new[]
+            Issuer = _options.Issuer,
+            Audience = _options.Audience,
+            IssuedAt = issuedAt,
+            NotBefore = issuedAt,
+            Expires = expiresAt,
+            SigningCredentials = _credentials,
+            Claims = new Dictionary<string, object>
             {
-                new Claim(ClaimTypes.NameIdentifier, account.Id.ToString()),
-                new Claim(ClaimTypes.Name, account.Email),
-                new Claim(ClaimTypes.Role, account.AccountType.ToString())
-            };
-
-            var token = new JwtSecurityToken(
-                issuer: issuer,
-                audience: audience,
-                claims: claims,
-                expires: expiresAtUtc,
-                signingCredentials: credentials
-            );
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
-        }
+                [JwtRegisteredClaimNames.Sub] = account.Id.ToString(),
+                [JwtRegisteredClaimNames.Email] = account.Email,
+                [AccountRoles.ClaimType] = account.AccountType.ToString(),
+                [JwtRegisteredClaimNames.Jti] = Guid.NewGuid().ToString()
+            }
+        });
+        return new TokenResult(token, expiresAt);
     }
 }
