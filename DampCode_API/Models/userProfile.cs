@@ -1,55 +1,31 @@
 ﻿namespace DampCode_API.Models;
 
-public sealed class userProfile
+public sealed class UserProfile
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    public Guid accountId { get; set; }
+    public Guid AccountId { get; set; }
 
-    public required string name { get; set; }
+    public required string Name { get; set; }
 
-    public string? biography { get; set; }
+    public string? Biography { get; set; }
 
-    public int level { get; set; } = 1;
+    public int Level { get; set; } = 1;
 
-    public decimal xp { get; set; } = 0;
+    public decimal Xp { get; set; }
 
-    public string? avatarStorageKey { get; set; }
+    public string? AvatarStorageKey { get; set; }
 
-    public ProfileVisibility profileVisibility { get; set; }
+    public ProfileVisibility ProfileVisibility { get; set; }
         = ProfileVisibility.Public;
 
-    public DateTime createdAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public DateTime updatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     // Autenticação e identidade.
-    public accounts account { get; set; } = null!;
-
-    // Histórico completo de associações empresariais.
-    public ICollection<companyMembership> companyMemberships { get; set; }
-        = new List<companyMembership>();
-
-
-    // Tecnologias dominadas/declaradas pelo usuário.
-    public ICollection<userTechnology> technologies { get; set; }
-        = new List<userTechnology>();
-
-    // Experiências profissionais apresentadas no perfil.
-    public ICollection<profileExperience> profileExperiences { get; set; }
-        = new List<profileExperience>();
-
-    // Participações individuais em Hackathons.
-    public ICollection<participation> individualParticipations { get; set; }
-        = new List<participation>();
-
-    // Histórico de integração em equipes.
-    public ICollection<teamMember> teamMemberships { get; set; }
-        = new List<teamMember>();
-
-    // Equipes criadas pelo usuário.
-    public ICollection<hackathonTeam> createdTeams { get; set; }
-        = new List<hackathonTeam>();
+    public Account Account { get; set; } = null!;
+    public ICollection<UserTechnology> Technologies { get; set; } = [];
 }
 
 public enum ProfileVisibility

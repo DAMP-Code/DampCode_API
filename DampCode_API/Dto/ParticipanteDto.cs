@@ -1,18 +1,14 @@
-﻿using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
+using System.ComponentModel.DataAnnotations;
 
-namespace DampCode_API.Dto
+namespace DampCode_API.Dto;
+
+public sealed class ParticipanteDto
 {
-    public class ParticipanteDto
-    {
-        public  string? Name { get; set; }
-        public  string? Email { get; set; }
-        public  string? Password { get; set; }
-        public string? Role { get; set; }
-
-        // participante
-        public int? Nivel { get; set; }
-        public decimal? Xp { get; set; }
-        public List<string>? Tecnologias { get; set; }
-    }
+    [Required, StringLength(150, MinimumLength = 2)]
+    public required string Name { get; set; }
+    [Required, EmailAddress, StringLength(254)]
+    public required string Email { get; set; }
+    [Required, StringLength(128, MinimumLength = 10)]
+    public required string Password { get; set; }
+    public List<string> Tecnologias { get; set; } = [];
 }

@@ -1,3 +1,6 @@
+using DampCode_API.Data;
+using DampCode_API.Services;
+using Microsoft.EntityFrameworkCore;
 using WebApiMongoDbDemo.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +12,19 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<MongoDbService>();
+builder.Services.AddDbContext<DampCodeDbContext>((serviceProvider, options) =>
+{
+    var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+    var connectionString = configuration.GetConnectionString("PostgreSql");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException(
+            "Configure a connection string 'PostgreSql' por User Secrets ou pela variável " +
+            "ConnectionStrings__PostgreSql.");
+    }
+    options.UseNpgsql(connectionString);
+});
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 builder.Services.AddCors(options =>
 {
@@ -30,10 +46,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors("AllowReact");
+
 app.UseAuthorization();
 
 app.MapControllers();
-
-app.UseCors("AllowReact"); 
 
 app.Run();
