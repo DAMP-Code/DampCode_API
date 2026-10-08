@@ -7,6 +7,7 @@ public interface IAuthService
     Task<AuthServiceResult> RegisterParticipantAsync(ParticipantDto dto, CancellationToken cancellationToken);
     Task<AuthServiceResult> RegisterCompanyAsync(CompanyDto dto, CancellationToken cancellationToken);
     Task<AuthServiceResult> LoginAsync(LoginDto dto, CancellationToken cancellationToken);
+    Task<UserResponseDto?> GetAccountAsync(Guid accountId, CancellationToken cancellationToken);
 }
 
 public sealed record AuthServiceResult(bool Succeeded, AuthResponseDto? Value = null, AuthServiceError Error = AuthServiceError.None, string? Message = null);
