@@ -1,3 +1,4 @@
+using DampCode_API.Authentication;
 using DampCode_API.Data;
 using DampCode_API.Dto;
 using DampCode_API.Models;
@@ -5,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DampCode_API.Services;
 
-public sealed class AuthService(DampCodeDbContext dbContext) : IAuthService
+public sealed class AuthService(DampCodeDbContext dbContext, ITokenService tokenService) : IAuthService
 {
     public async Task<AuthServiceResult> RegisterParticipantAsync(ParticipantDto dto, CancellationToken cancellationToken)
     {
@@ -83,6 +84,12 @@ public sealed class AuthService(DampCodeDbContext dbContext) : IAuthService
         return Success(account, name ?? account.Email);
     }
 
+    public Task<UserResponseDto?> GetAccountAsync(Guid accountId, CancellationToken cancellationToken) =>
+        dbContext.Accounts.AsNoTracking()
+            .Where(account => account.Id == accountId && account.DeletedAt == null)
+            .SelectUserResponse()
+            .SingleOrDefaultAsync(cancellationToken);
+
     private async Task AddUserTechnologiesAsync(UserProfile profile, IEnumerable<string> names, CancellationToken cancellationToken)
     {
         foreach (var technology in await ResolveTechnologiesAsync(names, cancellationToken))
@@ -124,12 +131,10 @@ public sealed class AuthService(DampCodeDbContext dbContext) : IAuthService
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static string OnlyDigits(string value) => new(value.Where(char.IsDigit).ToArray());
     private static AuthServiceResult Conflict(string message) => new(false, Error: AuthServiceError.Conflict, Message: message);
-    private static AuthServiceResult Success(Account account, string name) =>
-        new(true, new AuthResponseDto(account.Id, name, account.Email, account.AccountType switch
-        {
-            AccountType.Company => "empresa",
-            AccountType.Participant => "participante",
-            AccountType.Admin => "admin",
-            _ => throw new ArgumentOutOfRangeException(nameof(account.AccountType))
-        }));
+    private AuthServiceResult Success(Account account, string name)
+    {
+        var token = tokenService.GenerateToken(account);
+        return new(true, new AuthResponseDto(account.Id, name, account.Email,
+            AccountRoles.ToFrontRole(account.AccountType), token.Token, token.ExpiresAt));
+    }
 }

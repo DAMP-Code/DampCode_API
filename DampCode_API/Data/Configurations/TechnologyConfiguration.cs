@@ -27,6 +27,7 @@ public sealed class UserTechnologyConfiguration : IEntityTypeConfiguration<UserT
         builder.Property(item => item.UserProfileId).HasColumnName("user_profile_id");
         builder.Property(item => item.TechnologyId).HasColumnName("technology_id");
         builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.HasIndex(item => item.TechnologyId).HasDatabaseName("ix_user_technologies_technology_id");
         builder.HasOne(item => item.UserProfile).WithMany(profile => profile.Technologies)
             .HasForeignKey(item => item.UserProfileId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_user_technologies_user_profiles");
         builder.HasOne(item => item.Technology).WithMany(technology => technology.Users)
@@ -43,6 +44,7 @@ public sealed class CompanyTechnologyConfiguration : IEntityTypeConfiguration<Co
         builder.Property(item => item.CompanyId).HasColumnName("company_id");
         builder.Property(item => item.TechnologyId).HasColumnName("technology_id");
         builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.HasIndex(item => item.TechnologyId).HasDatabaseName("ix_company_technologies_technology_id");
         builder.HasOne(item => item.Company).WithMany(company => company.Technologies)
             .HasForeignKey(item => item.CompanyId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_company_technologies_companies");
         builder.HasOne(item => item.Technology).WithMany(technology => technology.Companies)
