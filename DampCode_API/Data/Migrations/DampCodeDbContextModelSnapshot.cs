@@ -173,6 +173,77 @@ namespace DampCode_API.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.CompanyInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("InvitedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_by_account_id");
+
+                    b.Property<string>("JobTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("job_title");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("responded_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_company_invitations");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_company_invitations_company_id");
+
+                    b.HasIndex("InvitedByAccountId")
+                        .HasDatabaseName("ix_company_invitations_invited_by_account_id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("ix_company_invitations_normalized_email");
+
+                    b.ToTable("company_invitations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_company_invitations_status", "status IN ('Pending', 'Accepted', 'Declined', 'Revoked')");
+                        });
+                });
+
             modelBuilder.Entity("DampCode_API.Models.CompanyMembership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -379,6 +450,27 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("PrimaryAccount");
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.CompanyInvitation", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Company", "Company")
+                        .WithMany("Invitations")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_invitations_companies");
+
+                    b.HasOne("DampCode_API.Models.Account", "InvitedByAccount")
+                        .WithMany()
+                        .HasForeignKey("InvitedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_invitations_accounts");
+
+                    b.Navigation("Company");
+
+                    b.Navigation("InvitedByAccount");
+                });
+
             modelBuilder.Entity("DampCode_API.Models.CompanyMembership", b =>
                 {
                     b.HasOne("DampCode_API.Models.Account", "Account")
@@ -465,6 +557,8 @@ namespace DampCode_API.Data.Migrations
 
             modelBuilder.Entity("DampCode_API.Models.Company", b =>
                 {
+                    b.Navigation("Invitations");
+
                     b.Navigation("Memberships");
 
                     b.Navigation("Technologies");
