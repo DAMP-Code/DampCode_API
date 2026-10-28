@@ -188,7 +188,8 @@ public sealed class CompanyService(DampCodeDbContext dbContext, ICompanyAccessSe
         Guid accountId, Guid invitationId, CancellationToken cancellationToken)
     {
         var account = await GetActiveAccountAsync(accountId, cancellationToken);
-        var invitation = await dbContext.CompanyInvitations.SingleOrDefaultAsync(item => item.Id == invitationId, cancellationToken);
+        var invitation = await dbContext.CompanyInvitations
+            .SingleOrDefaultAsync(item => item.Id == invitationId && item.Company.DeletedAt == null, cancellationToken);
         if (account is null || invitation is null || invitation.NormalizedEmail != account.NormalizedEmail)
             return (null, null, Fail<T>(CompanyServiceError.NotFound, "Convite não encontrado."));
         if (account.AccountType != AccountType.Participant)

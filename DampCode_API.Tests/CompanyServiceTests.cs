@@ -291,6 +291,21 @@ public sealed class CompanyServiceTests
     }
 
     [Fact]
+    public async Task AcceptInvitation_DeletedCompany_ReturnsNotFound()
+    {
+        var (company, participant) = await CompanyAndParticipantAsync();
+        var invitation = await InviteAsync(company);
+        company.DeletedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _service.AcceptInvitationAsync(participant.Id, invitation.Id, CancellationToken.None);
+
+        Assert.Equal(CompanyServiceError.NotFound, result.Error);
+        Assert.Equal("Convite não encontrado.", result.Message);
+        Assert.Empty(_dbContext.CompanyMemberships);
+    }
+
+    [Fact]
     public async Task AcceptInvitation_AlreadyAnswered_ReturnsConflict()
     {
         var (company, participant) = await CompanyAndParticipantAsync();
