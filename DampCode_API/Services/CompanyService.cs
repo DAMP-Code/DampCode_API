@@ -79,6 +79,130 @@ public sealed class CompanyService(DampCodeDbContext dbContext, ICompanyAccessSe
         return new(true, true);
     }
 
+    public async Task<IReadOnlyList<ReceivedInvitationDto>> GetReceivedInvitationsAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var account = await GetActiveAccountAsync(accountId, cancellationToken);
+        if (account is null || account.AccountType != AccountType.Participant) return [];
+
+        var now = DateTime.UtcNow;
+        return await dbContext.CompanyInvitations.AsNoTracking()
+            .Where(item => item.NormalizedEmail == account.NormalizedEmail && item.Status == CompanyInvitationStatus.Pending
+                && item.ExpiresAt > now && item.Company.DeletedAt == null)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new ReceivedInvitationDto(item.Id, item.Company.Name, item.JobTitle, item.ExpiresAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<CompanyServiceResult<CompanyAccessDto>> AcceptInvitationAsync(Guid accountId, Guid invitationId, CancellationToken cancellationToken)
+    {
+        var (account, invitation, error) = await FindReceivedInvitationAsync<CompanyAccessDto>(accountId, invitationId, cancellationToken);
+        if (error is not null) return error;
+        if (await dbContext.CompanyMemberships.AnyAsync(item => item.AccountId == account!.Id && item.EndedAt == null, cancellationToken))
+            return Fail<CompanyAccessDto>(CompanyServiceError.Conflict, "Você já está vinculado a uma empresa.");
+
+        var now = DateTime.UtcNow;
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        dbContext.CompanyMemberships.Add(new CompanyMembership
+        {
+            CompanyId = invitation!.CompanyId,
+            AccountId = account!.Id,
+            JobTitle = invitation.JobTitle,
+            StartedAt = now
+        });
+        invitation.Status = CompanyInvitationStatus.Accepted;
+        invitation.RespondedAt = now;
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Aceite simultâneo: o índice ux_company_memberships_active_account barra o segundo vínculo ativo.
+            return Fail<CompanyAccessDto>(CompanyServiceError.Conflict, "Você já está vinculado a uma empresa.");
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return new(true, await companyAccessService.GetManagedCompanyAsync(account.Id, cancellationToken));
+    }
+
+    public async Task<CompanyServiceResult<bool>> DeclineInvitationAsync(Guid accountId, Guid invitationId, CancellationToken cancellationToken)
+    {
+        var (_, invitation, error) = await FindReceivedInvitationAsync<bool>(accountId, invitationId, cancellationToken);
+        if (error is not null) return error;
+
+        invitation!.Status = CompanyInvitationStatus.Declined;
+        invitation.RespondedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, true);
+    }
+
+    public async Task<CompanyServiceResult<IReadOnlyList<CompanyEmployeeDto>>> GetEmployeesAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var access = await companyAccessService.GetManagedCompanyAsync(accountId, cancellationToken);
+        if (access is null) return Fail<IReadOnlyList<CompanyEmployeeDto>>(CompanyServiceError.NotFound, "Empresa não encontrada.");
+
+        var employees = await dbContext.CompanyMemberships.AsNoTracking()
+            .Where(item => item.CompanyId == access.CompanyId && item.EndedAt == null)
+            .OrderBy(item => item.StartedAt)
+            .Select(item => new CompanyEmployeeDto(item.AccountId, item.Account.UserProfile!.Name ?? item.Account.Email,
+                item.Account.Email, item.JobTitle, item.StartedAt))
+            .ToListAsync(cancellationToken);
+        return new(true, employees);
+    }
+
+    public async Task<CompanyServiceResult<bool>> RemoveEmployeeAsync(Guid accountId, Guid employeeAccountId, CancellationToken cancellationToken)
+    {
+        var company = await GetPrimaryCompanyAsync(accountId, cancellationToken);
+        if (company is null) return Fail<bool>(CompanyServiceError.Forbidden, "Apenas a conta principal da empresa pode remover funcionários.");
+
+        var membership = await dbContext.CompanyMemberships
+            .SingleOrDefaultAsync(item => item.CompanyId == company.Id && item.AccountId == employeeAccountId && item.EndedAt == null, cancellationToken);
+        if (membership is null) return Fail<bool>(CompanyServiceError.NotFound, "Funcionário não encontrado.");
+
+        membership.EndedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, true);
+    }
+
+    public async Task<IReadOnlyList<CompanyVerificationDto>> GetPendingVerificationsAsync(CancellationToken cancellationToken) =>
+        await dbContext.Companies.AsNoTracking()
+            .Where(company => company.VerificationStatus == CompanyVerificationStatus.Pending && company.DeletedAt == null)
+            .OrderBy(company => company.CreatedAt)
+            .Select(company => new CompanyVerificationDto(company.Id, company.Name, company.Cnpj, company.Area, company.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+    public async Task<CompanyServiceResult<bool>> UpdateVerificationAsync(Guid companyId, UpdateVerificationDto dto, CancellationToken cancellationToken)
+    {
+        if (!Enum.TryParse<CompanyVerificationStatus>(dto.Status, ignoreCase: true, out var status) || status == CompanyVerificationStatus.Pending)
+            return Fail<bool>(CompanyServiceError.Validation, "Status deve ser Verified ou Rejected.");
+
+        var company = await dbContext.Companies.SingleOrDefaultAsync(item => item.Id == companyId && item.DeletedAt == null, cancellationToken);
+        if (company is null) return Fail<bool>(CompanyServiceError.NotFound, "Empresa não encontrada.");
+
+        company.VerificationStatus = status;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, true);
+    }
+
+    // Convite recebido pela conta: valida dono do e-mail, tipo de conta, status e expiração, nessa ordem.
+    private async Task<(Account? Account, CompanyInvitation? Invitation, CompanyServiceResult<T>? Error)> FindReceivedInvitationAsync<T>(
+        Guid accountId, Guid invitationId, CancellationToken cancellationToken)
+    {
+        var account = await GetActiveAccountAsync(accountId, cancellationToken);
+        var invitation = await dbContext.CompanyInvitations.SingleOrDefaultAsync(item => item.Id == invitationId, cancellationToken);
+        if (account is null || invitation is null || invitation.NormalizedEmail != account.NormalizedEmail)
+            return (null, null, Fail<T>(CompanyServiceError.NotFound, "Convite não encontrado."));
+        if (account.AccountType != AccountType.Participant)
+            return (null, null, Fail<T>(CompanyServiceError.Forbidden, "Apenas participantes podem responder convites."));
+        if (invitation.Status != CompanyInvitationStatus.Pending)
+            return (null, null, Fail<T>(CompanyServiceError.Conflict, "Este convite já foi respondido."));
+        if (invitation.ExpiresAt <= DateTime.UtcNow)
+            return (null, null, Fail<T>(CompanyServiceError.Expired, "Este convite expirou."));
+        return (account, invitation, null);
+    }
+
+    private Task<Account?> GetActiveAccountAsync(Guid accountId, CancellationToken cancellationToken) =>
+        dbContext.Accounts.AsNoTracking().SingleOrDefaultAsync(account => account.Id == accountId && account.DeletedAt == null, cancellationToken);
+
     private Task<Company?> GetPrimaryCompanyAsync(Guid accountId, CancellationToken cancellationToken) =>
         dbContext.Companies.Include(company => company.PrimaryAccount)
             .SingleOrDefaultAsync(company => company.PrimaryAccountId == accountId && company.DeletedAt == null, cancellationToken);
