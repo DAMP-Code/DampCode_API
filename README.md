@@ -44,6 +44,18 @@ dotnet ef migrations add <Nome> --project DampCode_API --startup-project DampCod
 
 Tokens expiram em 24h e deixam de valer se a conta for suspensa, desativada, excluída ou tiver as credenciais alteradas.
 
+## Conta Admin
+
+Não existe cadastro de Admin pela API. Para verificar empresas (`GET /api/Companies/pending-verification` e
+`PATCH /api/Companies/{id}/verification`), promova uma conta já cadastrada direto no banco, com o e-mail em maiúsculas:
+
+```sql
+UPDATE accounts SET account_type = 'Admin' WHERE normalized_email = 'ADMIN@EXEMPLO.COM';
+```
+
+A permissão vem do token: depois de promover, faça login de novo para receber um token com a role `Admin`.
+Da mesma forma, uma conta rebaixada continua com acesso de Admin até o token atual expirar.
+
 ## Testes
 
 O projeto de testes usa .NET 10 (SDK 10 necessário); a API continua em .NET 8.
