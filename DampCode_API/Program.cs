@@ -48,6 +48,7 @@ builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICompanyAccessService, CompanyAccessService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
+builder.Services.AddScoped<IHackathonService, HackathonService>();
 
 builder.Services.AddCors(options =>
 {
