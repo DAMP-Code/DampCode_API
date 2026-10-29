@@ -725,6 +725,44 @@ public sealed class HackathonServiceTests
     }
 
     [Fact]
+    public async Task Update_WithoutReferenceFields_KeepsReference()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        published.ReferenceLanguage = "Python";
+        published.ReferenceCode = "def resposta(): pass";
+        await _dbContext.SaveChangesAsync();
+        var dto = CompleteDto();
+        dto.corPrincipal = "#000000";
+
+        var result = await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var stored = Stored(published.Id.ToString());
+        Assert.Equal("#000000", stored.PrimaryColor);
+        Assert.Equal("def resposta(): pass", stored.ReferenceCode);
+        Assert.Equal("Python", stored.ReferenceLanguage);
+    }
+
+    [Fact]
+    public async Task Update_EmptyReference_ClearsIt()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        published.ReferenceLanguage = "Python";
+        published.ReferenceCode = "def resposta(): pass";
+        await _dbContext.SaveChangesAsync();
+        var dto = CompleteDto();
+        dto.SolucaoReferencia = "";
+
+        await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        var stored = Stored(published.Id.ToString());
+        Assert.Null(stored.ReferenceCode);
+        Assert.Null(stored.ReferenceLanguage);
+    }
+
+    [Fact]
     public async Task Create_ReferenceOver100Kb_ReturnsValidation()
     {
         var company = await CompanySeed.CompanyAsync(_dbContext);

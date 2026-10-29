@@ -278,6 +278,8 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         hackathon.BackgroundColor = Blank(dto.corFundo);
         hackathon.Logo = Blank(dto.Logo);
         // A referência só a empresa vê, então pode mudar mesmo depois de publicado. O código não é aparado.
+        // Campo ausente (null) mantém a referência; texto vazio apaga.
+        if (dto.SolucaoReferencia is null) return;
         hackathon.ReferenceCode = string.IsNullOrWhiteSpace(dto.SolucaoReferencia) ? null : dto.SolucaoReferencia;
         hackathon.ReferenceLanguage = hackathon.ReferenceCode is null ? null : Blank(dto.LinguagemReferencia);
     }
