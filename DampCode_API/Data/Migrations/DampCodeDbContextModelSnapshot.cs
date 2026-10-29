@@ -398,6 +398,15 @@ namespace DampCode_API.Data.Migrations
                         .HasColumnType("numeric(12,2)")
                         .HasColumnName("prize_amount");
 
+                    b.Property<string>("ReferenceCode")
+                        .HasColumnType("text")
+                        .HasColumnName("reference_code");
+
+                    b.Property<string>("ReferenceLanguage")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reference_language");
+
                     b.Property<DateTime?>("ReviewEndsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("review_ends_at");
@@ -607,6 +616,138 @@ namespace DampCode_API.Data.Migrations
                         .HasFilter("left_at IS NULL");
 
                     b.ToTable("participations", (string)null);
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Submission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CurrentMongoVersionId")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("current_mongo_version_id");
+
+                    b.Property<int>("CurrentVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("current_version");
+
+                    b.Property<DateTime?>("FinalizedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finalized_at");
+
+                    b.Property<DateTime?>("FirstSubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_submitted_at");
+
+                    b.Property<Guid>("HackathonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hackathon_id");
+
+                    b.Property<DateTime?>("LastSubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_submitted_at");
+
+                    b.Property<Guid?>("ParticipationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("participation_id");
+
+                    b.Property<Guid?>("StageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stage_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_submissions");
+
+                    b.HasIndex("HackathonId")
+                        .HasDatabaseName("ix_submissions_hackathon_id");
+
+                    b.HasIndex("ParticipationId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submissions_participation")
+                        .HasFilter("participation_id IS NOT NULL");
+
+                    b.HasIndex("TeamId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submissions_team")
+                        .HasFilter("team_id IS NOT NULL");
+
+                    b.ToTable("submissions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_submissions_owner", "(participation_id IS NULL) <> (team_id IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.SubmissionVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("language");
+
+                    b.Property<string>("MongoDocumentId")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("mongo_document_id");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submission_id");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid>("SubmittedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submitted_by_account_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_submission_versions");
+
+                    b.HasIndex("SubmittedByAccountId")
+                        .HasDatabaseName("ix_submission_versions_submitted_by_account_id");
+
+                    b.HasIndex("SubmissionId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submission_versions_version");
+
+                    b.ToTable("submission_versions", (string)null);
                 });
 
             modelBuilder.Entity("DampCode_API.Models.TeamInvitation", b =>
@@ -1010,6 +1151,55 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("Team");
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.Submission", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
+                        .WithMany("Submissions")
+                        .HasForeignKey("HackathonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_submissions_hackathons");
+
+                    b.HasOne("DampCode_API.Models.Participation", "Participation")
+                        .WithMany()
+                        .HasForeignKey("ParticipationId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_submissions_participations");
+
+                    b.HasOne("DampCode_API.Models.HackathonTeam", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_submissions_hackathon_teams");
+
+                    b.Navigation("Hackathon");
+
+                    b.Navigation("Participation");
+
+                    b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.SubmissionVersion", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Submission", "Submission")
+                        .WithMany("Versions")
+                        .HasForeignKey("SubmissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_submission_versions_submissions");
+
+                    b.HasOne("DampCode_API.Models.Account", "SubmittedByAccount")
+                        .WithMany()
+                        .HasForeignKey("SubmittedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_submission_versions_accounts");
+
+                    b.Navigation("Submission");
+
+                    b.Navigation("SubmittedByAccount");
+                });
+
             modelBuilder.Entity("DampCode_API.Models.TeamInvitation", b =>
                 {
                     b.HasOne("DampCode_API.Models.Account", "InvitedByAccount")
@@ -1109,6 +1299,8 @@ namespace DampCode_API.Data.Migrations
                 {
                     b.Navigation("Participations");
 
+                    b.Navigation("Submissions");
+
                     b.Navigation("Teams");
 
                     b.Navigation("Technologies");
@@ -1121,6 +1313,11 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("JoinRequests");
 
                     b.Navigation("Members");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Submission", b =>
+                {
+                    b.Navigation("Versions");
                 });
 
             modelBuilder.Entity("DampCode_API.Models.Technology", b =>

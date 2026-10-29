@@ -42,6 +42,8 @@ public sealed class HackathonConfiguration : IEntityTypeConfiguration<Hackathon>
         builder.Property(item => item.BackgroundColor).HasColumnName("background_color").HasMaxLength(7);
         builder.Property(item => item.Logo).HasColumnName("logo").HasColumnType("text");
         builder.Property(item => item.LogoStorageKey).HasColumnName("logo_storage_key").HasMaxLength(500);
+        builder.Property(item => item.ReferenceLanguage).HasColumnName("reference_language").HasMaxLength(32);
+        builder.Property(item => item.ReferenceCode).HasColumnName("reference_code").HasColumnType("text");
         builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(item => item.UpdatedAt).HasColumnName("updated_at").IsRequired();
         builder.Property(item => item.DeletedAt).HasColumnName("deleted_at");
