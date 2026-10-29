@@ -34,13 +34,13 @@ public sealed class HackathonsController(MongoDbService mongoDbService) : Contro
             Tecnologias = dto.Tecnologias,
             Metodo = dto.Metodo,
             Ranking = dto.Ranking,
-            Premiacao = dto.Premiacao,
+            Premiacao = dto.Premiacao ?? 0,
             corPrincipal = dto.corPrincipal,
             corSecundaria = dto.corSecundaria,
             corFundo = dto.corFundo,
             Logo = dto.Logo,
             DataCriacao = dto.DataCriacao,
-            DataFinal = dto.DataFinal,
+            DataFinal = dto.DataFinal ?? DateTime.UtcNow,
             status = dto.status
         };
         await _hackathons.InsertOneAsync(hackathon, cancellationToken: cancellationToken);

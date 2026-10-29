@@ -16,7 +16,7 @@
 
         public string? Ranking { get; set; }
 
-        public decimal Premiacao { get; set; }
+        public decimal? Premiacao { get; set; }
 
         public string? corPrincipal { get; set; }
 
@@ -28,7 +28,15 @@
 
         public DateTime DataCriacao { get; set; }
 
-        public DateTime DataFinal { get; set; }
+        public DateTime? DataFinal { get; set; }
+
+        public DateTime? DataInicio { get; set; }
+
+        public DateTime? DataFimAvaliacao { get; set; }
+
+        public string? Formato { get; set; }
+
+        public string? TipoPremiacao { get; set; }
 
         public bool status { get; set; }
     }
