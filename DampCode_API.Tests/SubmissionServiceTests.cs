@@ -315,4 +315,100 @@ public sealed class SubmissionServiceTests
         Assert.Null(mine.Atual);
         Assert.Equal("Os Rápidos", mine.Equipe);
     }
+
+    [Fact]
+    public async Task GetEntries_ListsTeamsWithAndWithoutSubmission()
+    {
+        var (company, hackathon, _, ana, _) = await ActiveTeamAsync();
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        var other = new HackathonTeam { HackathonId = hackathon.Id, CreatedByAccountId = carla.Id, Name = "Turma do Bit", NormalizedName = "TURMA DO BIT", MemberCount = 1 };
+        _dbContext.HackathonTeams.Add(other);
+        await RegisterAsync(hackathon, carla, other);
+        await SubmitAsync(ana, hackathon);
+
+        var result = await _service.GetEntriesAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(["Os Rápidos", "Turma do Bit"], result.Value!.Select(item => item.Nome));
+        Assert.Equal(1, result.Value[0].VersaoAtual);
+        Assert.Null(result.Value[1].SubmissionId);
+    }
+
+    [Fact]
+    public async Task GetEntries_Individual_ListsParticipants()
+    {
+        var (company, hackathon, ana) = await ActiveIndividualAsync();
+        await SubmitAsync(ana, hackathon);
+
+        var result = await _service.GetEntriesAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        var entry = Assert.Single(result.Value!);
+        Assert.Equal("Ana Souza", entry.Nome);
+        Assert.Equal(1, entry.VersaoAtual);
+    }
+
+    [Fact]
+    public async Task GetEntries_OtherCompany_ReturnsNotFound()
+    {
+        var (_, hackathon, _) = await ActiveIndividualAsync();
+        var other = await CompanySeed.CompanyAsync(_dbContext, "outra@exemplo.com", CompanyVerificationStatus.Verified);
+
+        var result = await _service.GetEntriesAsync(other.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.Equal(SubmissionServiceError.NotFound, result.Error);
+        Assert.Equal("Hackathon não encontrado.", result.Message);
+    }
+
+    [Fact]
+    public async Task GetEntries_Participant_ReturnsForbidden()
+    {
+        var (_, hackathon, ana) = await ActiveIndividualAsync();
+
+        var result = await _service.GetEntriesAsync(ana.Id, hackathon.Id, CancellationToken.None);
+
+        Assert.Equal(SubmissionServiceError.Forbidden, result.Error);
+        Assert.Equal("Apenas empresas e seus funcionários podem gerenciar Hackathons.", result.Message);
+    }
+
+    [Fact]
+    public async Task GetEntry_ReturnsVersionsAndCurrentCode()
+    {
+        var (company, hackathon, ana) = await ActiveIndividualAsync();
+        await SubmitAsync(ana, hackathon, Code("v1"));
+        await SubmitAsync(ana, hackathon, Code("v2"));
+        var submissionId = _dbContext.Submissions.Single().Id;
+
+        var result = await _service.GetEntryAsync(company.PrimaryAccountId, hackathon.Id, submissionId, CancellationToken.None);
+
+        Assert.Equal("Ana Souza", result.Value!.Nome);
+        Assert.Equal(2, result.Value.Versoes.Count);
+        Assert.Equal("v2", result.Value.Atual!.Codigo);
+    }
+
+    [Fact]
+    public async Task GetEntryVersion_ReturnsOldCode()
+    {
+        var (company, hackathon, ana) = await ActiveIndividualAsync();
+        await SubmitAsync(ana, hackathon, Code("v1"));
+        await SubmitAsync(ana, hackathon, Code("v2"));
+        var submissionId = _dbContext.Submissions.Single().Id;
+
+        var result = await _service.GetEntryVersionAsync(company.PrimaryAccountId, hackathon.Id, submissionId, 1, CancellationToken.None);
+
+        Assert.Equal("v1", result.Value!.Codigo);
+    }
+
+    [Fact]
+    public async Task GetReference_ReturnsCompanyCode()
+    {
+        var (company, hackathon, _) = await ActiveIndividualAsync();
+        hackathon.ReferenceLanguage = "Python";
+        hackathon.ReferenceCode = "def resposta(): pass";
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _service.GetReferenceAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.Equal("Python", result.Value!.Linguagem);
+        Assert.Equal("def resposta(): pass", result.Value.Codigo);
+    }
 }

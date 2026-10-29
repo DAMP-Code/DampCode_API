@@ -705,6 +705,51 @@ public sealed class HackathonServiceTests
         Assert.Equal(created.HackathonId, result.Value!.HackathonId);
     }
 
+    [Fact]
+    public async Task Update_Published_SavesReference()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        var dto = CompleteDto();
+        dto.Titulo = "Título que não pode mudar";
+        dto.LinguagemReferencia = "Python";
+        dto.SolucaoReferencia = "def resposta(): pass";
+
+        var result = await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var stored = Stored(published.Id.ToString());
+        Assert.Equal("Publicado", stored.Title);
+        Assert.Equal("Python", stored.ReferenceLanguage);
+        Assert.Equal("def resposta(): pass", stored.ReferenceCode);
+    }
+
+    [Fact]
+    public async Task Create_ReferenceOver100Kb_ReturnsValidation()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.LinguagemReferencia = "Python";
+        dto.SolucaoReferencia = new string('a', 102401);
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("O código deve ter no máximo 100 KB.", result.Message);
+    }
+
+    [Fact]
+    public async Task Create_ReferenceWithoutLanguage_ReturnsValidation()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.SolucaoReferencia = "def resposta(): pass";
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal("Escolha uma linguagem.", result.Message);
+    }
+
     private async Task AddParticipantsAsync(Hackathon hackathon, int active, int left = 0)
     {
         for (var index = 0; index < active + left; index++)

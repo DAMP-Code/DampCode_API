@@ -7,6 +7,10 @@ public interface ISubmissionService
     Task<SubmissionServiceResult<MySubmissionDto>> GetMineAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken);
     Task<SubmissionServiceResult<SubmissionCodeDto>> GetMyVersionAsync(Guid accountId, Guid hackathonId, int version, CancellationToken cancellationToken);
     Task<SubmissionServiceResult<SubmissionCodeDto>> SubmitAsync(Guid accountId, Guid hackathonId, SubmitCodeDto dto, CancellationToken cancellationToken);
+    Task<SubmissionServiceResult<IReadOnlyList<SubmissionEntryDto>>> GetEntriesAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken);
+    Task<SubmissionServiceResult<SubmissionDetailDto>> GetEntryAsync(Guid accountId, Guid hackathonId, Guid submissionId, CancellationToken cancellationToken);
+    Task<SubmissionServiceResult<SubmissionCodeDto>> GetEntryVersionAsync(Guid accountId, Guid hackathonId, Guid submissionId, int version, CancellationToken cancellationToken);
+    Task<SubmissionServiceResult<ReferenceSolutionDto>> GetReferenceAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken);
 }
 
 public sealed record SubmissionServiceResult<T>(bool Succeeded, T? Value = default, SubmissionServiceError Error = SubmissionServiceError.None, string? Message = null);

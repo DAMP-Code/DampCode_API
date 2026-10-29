@@ -103,6 +103,81 @@ public sealed class SubmissionService(DampCodeDbContext dbContext, ICompanyAcces
         return new(true, new SubmissionCodeDto(number, dto.Linguagem!, fileName, dto.Codigo!));
     }
 
+    // Uma linha por equipe com membro ativo (equipe) ou por inscrição ativa (individual); sem entrega, SubmissionId nulo.
+    public async Task<SubmissionServiceResult<IReadOnlyList<SubmissionEntryDto>>> GetEntriesAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var (hackathon, failure) = await FindManagedHackathonAsync<IReadOnlyList<SubmissionEntryDto>>(accountId, hackathonId, cancellationToken);
+        if (hackathon is null) return failure!;
+
+        var submissions = await dbContext.Submissions.AsNoTracking().Where(item => item.HackathonId == hackathonId).ToListAsync(cancellationToken);
+        List<SubmissionEntryDto> entries;
+        if (hackathon.ParticipationMode == HackathonParticipationMode.Team)
+        {
+            var teams = await dbContext.HackathonTeams.AsNoTracking()
+                .Where(item => item.HackathonId == hackathonId && item.Members.Any(member => member.LeftAt == null))
+                .Select(item => new { item.Id, item.Name })
+                .ToListAsync(cancellationToken);
+            entries = teams.Select(team => ToEntry(team.Name, submissions.SingleOrDefault(item => item.TeamId == team.Id))).ToList();
+        }
+        else
+        {
+            var participants = await dbContext.Participations.AsNoTracking()
+                .Where(item => item.HackathonId == hackathonId && item.LeftAt == null)
+                .Select(item => new { item.Id, Name = item.Account.UserProfile != null ? item.Account.UserProfile.Name : item.Account.Email })
+                .ToListAsync(cancellationToken);
+            entries = participants.Select(person => ToEntry(person.Name, submissions.SingleOrDefault(item => item.ParticipationId == person.Id))).ToList();
+        }
+        return new(true, entries.OrderBy(item => item.Nome, StringComparer.CurrentCultureIgnoreCase).ToList());
+    }
+
+    public async Task<SubmissionServiceResult<SubmissionDetailDto>> GetEntryAsync(Guid accountId, Guid hackathonId, Guid submissionId, CancellationToken cancellationToken)
+    {
+        var (hackathon, failure) = await FindManagedHackathonAsync<SubmissionDetailDto>(accountId, hackathonId, cancellationToken);
+        if (hackathon is null) return failure!;
+        var submission = await dbContext.Submissions.AsNoTracking()
+            .Include(item => item.Team)
+            .Include(item => item.Participation).ThenInclude(item => item!.Account).ThenInclude(item => item.UserProfile)
+            .SingleOrDefaultAsync(item => item.Id == submissionId && item.HackathonId == hackathonId, cancellationToken);
+        if (submission is null) return Fail<SubmissionDetailDto>(SubmissionServiceError.NotFound, "Entrega não encontrada.");
+
+        var name = submission.Team?.Name ?? submission.Participation?.Account.UserProfile?.Name ?? submission.Participation?.Account.Email ?? "";
+        var versions = await LoadVersionsAsync(submission, cancellationToken);
+        var current = await LoadCodeAsync(submission.Id, submission.CurrentVersion, cancellationToken);
+        return new(true, new SubmissionDetailDto(submission.Id, name, versions, current));
+    }
+
+    public async Task<SubmissionServiceResult<SubmissionCodeDto>> GetEntryVersionAsync(Guid accountId, Guid hackathonId, Guid submissionId, int version, CancellationToken cancellationToken)
+    {
+        var (hackathon, failure) = await FindManagedHackathonAsync<SubmissionCodeDto>(accountId, hackathonId, cancellationToken);
+        if (hackathon is null) return failure!;
+        if (!await dbContext.Submissions.AnyAsync(item => item.Id == submissionId && item.HackathonId == hackathonId, cancellationToken))
+            return Fail<SubmissionCodeDto>(SubmissionServiceError.NotFound, VersionNotFoundMessage);
+
+        var code = await LoadCodeAsync(submissionId, version, cancellationToken);
+        return code is null ? Fail<SubmissionCodeDto>(SubmissionServiceError.NotFound, VersionNotFoundMessage) : new(true, code);
+    }
+
+    public async Task<SubmissionServiceResult<ReferenceSolutionDto>> GetReferenceAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var (hackathon, failure) = await FindManagedHackathonAsync<ReferenceSolutionDto>(accountId, hackathonId, cancellationToken);
+        return hackathon is null ? failure! : new(true, new ReferenceSolutionDto(hackathon.ReferenceLanguage, hackathon.ReferenceCode));
+    }
+
+    // Mesma regra de acesso do HackathonService: conta principal ou funcionário da empresa dona.
+    private async Task<(Hackathon? Hackathon, SubmissionServiceResult<T>? Failure)> FindManagedHackathonAsync<T>(
+        Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var company = await companyAccessService.GetManagedCompanyAsync(accountId, cancellationToken);
+        if (company is null)
+            return (null, Fail<T>(SubmissionServiceError.Forbidden, "Apenas empresas e seus funcionários podem gerenciar Hackathons."));
+        var hackathon = await dbContext.Hackathons.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == hackathonId && item.CompanyId == company.CompanyId, cancellationToken);
+        return hackathon is null ? (null, Fail<T>(SubmissionServiceError.NotFound, NotFoundMessage)) : (hackathon, null);
+    }
+
+    private static SubmissionEntryDto ToEntry(string name, Submission? submission) =>
+        new(submission?.Id, name, submission?.CurrentVersion, submission?.LastSubmittedAt);
+
     // Linguagem da lista, código não vazio e dentro do limite. Também usado pela solução de referência.
     public static string? ValidateCode(string? language, string? code)
     {

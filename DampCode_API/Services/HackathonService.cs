@@ -250,6 +250,9 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
     {
         if (new[] { dto.corPrincipal, dto.corSecundaria, dto.corFundo }.Any(color => !string.IsNullOrWhiteSpace(color) && !ColorPattern.IsMatch(color.Trim())))
             return "As cores devem estar no formato #RRGGBB.";
+        // Solução de referência segue as mesmas regras do código entregue (linguagem da lista, até 100 KB).
+        if (!string.IsNullOrWhiteSpace(dto.SolucaoReferencia) && SubmissionService.ValidateCode(dto.LinguagemReferencia, dto.SolucaoReferencia) is { } referenceError)
+            return referenceError;
         if (string.IsNullOrWhiteSpace(dto.Logo)) return null;
         if (dto.Logo.Length > MaxLogoLength) return "O logo deve ter no máximo 2 MB.";
         return LogoPattern.IsMatch(dto.Logo.Trim()) ? null : "O logo deve ser uma imagem PNG, JPEG, WEBP ou GIF.";
@@ -274,6 +277,9 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         hackathon.SecondaryColor = Blank(dto.corSecundaria);
         hackathon.BackgroundColor = Blank(dto.corFundo);
         hackathon.Logo = Blank(dto.Logo);
+        // A referência só a empresa vê, então pode mudar mesmo depois de publicado. O código não é aparado.
+        hackathon.ReferenceCode = string.IsNullOrWhiteSpace(dto.SolucaoReferencia) ? null : dto.SolucaoReferencia;
+        hackathon.ReferenceLanguage = hackathon.ReferenceCode is null ? null : Blank(dto.LinguagemReferencia);
     }
 
     // Remove só as que saíram e adiciona só as novas, para não reanexar a mesma chave.

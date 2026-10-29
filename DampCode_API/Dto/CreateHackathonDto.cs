@@ -38,6 +38,10 @@
 
         public string? TipoPremiacao { get; set; }
 
+        public string? LinguagemReferencia { get; set; }
+
+        public string? SolucaoReferencia { get; set; }
+
         public bool status { get; set; }
     }
 }
