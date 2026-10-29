@@ -11,7 +11,7 @@ namespace DampCode_API.Controllers;
 [Authorize]
 [Route("api/[controller]")]
 [ApiController]
-public sealed class HackathonsController(IHackathonService hackathonService) : ControllerBase
+public sealed class HackathonsController(IHackathonService hackathonService, IParticipationService participationService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
@@ -73,6 +73,30 @@ public sealed class HackathonsController(IHackathonService hackathonService) : C
             ? ToActionResult(await hackathonService.CloseAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
             : Unauthorized();
 
+    [HttpPost("{id:guid}/inscricao")]
+    public async Task<IActionResult> RegisterParticipant(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await participationService.RegisterAsync(accountId, id, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
+    [HttpDelete("{id:guid}/inscricao")]
+    public async Task<IActionResult> CancelParticipant(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await participationService.CancelRegistrationAsync(accountId, id, cancellationToken), StatusCodes.Status204NoContent)
+            : Unauthorized();
+
+    // Equipes abertas com vaga, para quem quer pedir para entrar.
+    [AllowAnonymous]
+    [HttpGet("{id:guid}/equipes")]
+    public async Task<IActionResult> GetOpenTeams(Guid id, CancellationToken cancellationToken) =>
+        ToActionResult(await participationService.GetOpenTeamsAsync(id, cancellationToken), StatusCodes.Status200OK);
+
+    [HttpPost("{id:guid}/equipes")]
+    public async Task<IActionResult> CreateTeam(Guid id, [FromBody] CreateTeamDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await participationService.CreateTeamAsync(accountId, id, dto, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
     private bool TryGetAccountId(out Guid accountId) =>
         Guid.TryParse(User.FindFirstValue(JwtRegisteredClaimNames.Sub), out accountId);
 
@@ -87,6 +111,22 @@ public sealed class HackathonsController(IHackathonService hackathonService) : C
             HackathonServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
             HackathonServiceError.Conflict => Conflict(problem),
             HackathonServiceError.Validation => BadRequest(problem),
+            _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
+        };
+    }
+
+    private IActionResult ToActionResult<T>(ParticipationServiceResult<T> result, int successStatusCode)
+    {
+        if (result.Succeeded)
+            return successStatusCode == StatusCodes.Status204NoContent ? NoContent() : StatusCode(successStatusCode, result.Value);
+        var problem = new ProblemDetails { Detail = result.Message };
+        return result.Error switch
+        {
+            ParticipationServiceError.NotFound => NotFound(problem),
+            ParticipationServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
+            ParticipationServiceError.Conflict => Conflict(problem),
+            ParticipationServiceError.Expired => StatusCode(StatusCodes.Status410Gone, problem),
+            ParticipationServiceError.Validation => BadRequest(problem),
             _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
         };
     }

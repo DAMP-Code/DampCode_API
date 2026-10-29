@@ -49,6 +49,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICompanyAccessService, CompanyAccessService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IHackathonService, HackathonService>();
+builder.Services.AddScoped<IParticipationService, ParticipationService>();
 
 builder.Services.AddCors(options =>
 {
