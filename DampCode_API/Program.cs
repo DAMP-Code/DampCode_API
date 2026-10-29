@@ -32,6 +32,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddSingleton<MongoDbService>();
+builder.Services.AddSingleton<ISubmissionVersionStore, MongoSubmissionVersionStore>();
 builder.Services.AddDbContext<DampCodeDbContext>((serviceProvider, options) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();
@@ -50,6 +51,7 @@ builder.Services.AddScoped<ICompanyAccessService, CompanyAccessService>();
 builder.Services.AddScoped<ICompanyService, CompanyService>();
 builder.Services.AddScoped<IHackathonService, HackathonService>();
 builder.Services.AddScoped<IParticipationService, ParticipationService>();
+builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 
 builder.Services.AddCors(options =>
 {
