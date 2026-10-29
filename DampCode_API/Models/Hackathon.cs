@@ -1,7 +1,7 @@
 namespace DampCode_API.Models;
 
-// Entidade-base preservada para a próxima etapa. Ainda não faz parte do DbContext
-// porque publicação e gerenciamento dependem da autorização empresarial.
+// Hackathon fica no PostgreSQL, ligado à empresa que o criou. O Status gravado é só
+// Draft, Scheduled, Closed (encerramento manual) ou Cancelled; as outras fases são calculadas pelas datas.
 public sealed class Hackathon
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -15,6 +15,9 @@ public sealed class Hackathon
     public HackathonStatus Status { get; set; } = HackathonStatus.Draft;
     // Valores (quiz, links, arquivos, executor) ainda não definidos.
     public string? EvaluationMethod { get; set; }
+    public decimal? PrizeAmount { get; set; }
+    public HackathonRewardType? RewardType { get; set; }
+    public int? WinnersCount { get; set; }
     public DateTime? StartsAt { get; set; }
     public DateTime? EndsAt { get; set; }
     public DateTime? ReviewEndsAt { get; set; }
@@ -24,11 +27,25 @@ public sealed class Hackathon
     public string? PrimaryColor { get; set; }
     public string? SecondaryColor { get; set; }
     public string? BackgroundColor { get; set; }
+    // Data URL enquanto não existe Object Storage; LogoStorageKey fica reservado para ele.
+    public string? Logo { get; set; }
     public string? LogoStorageKey { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? DeletedAt { get; set; }
+    public Company Company { get; set; } = null!;
+    public ICollection<HackathonTechnology> Technologies { get; set; } = [];
+}
+
+public sealed class HackathonTechnology
+{
+    public Guid HackathonId { get; set; }
+    public Guid TechnologyId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public Hackathon Hackathon { get; set; } = null!;
+    public Technology Technology { get; set; } = null!;
 }
 
 public enum HackathonParticipationMode { Individual, Team }
 public enum HackathonStatus { Draft, Scheduled, Active, InReview, Closed, Cancelled }
+public enum HackathonRewardType { Money, Interview }

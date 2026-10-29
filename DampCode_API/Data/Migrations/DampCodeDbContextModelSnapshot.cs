@@ -173,6 +173,77 @@ namespace DampCode_API.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.CompanyInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("InvitedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_by_account_id");
+
+                    b.Property<string>("JobTitle")
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("job_title");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("responded_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_company_invitations");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_company_invitations_company_id");
+
+                    b.HasIndex("InvitedByAccountId")
+                        .HasDatabaseName("ix_company_invitations_invited_by_account_id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("ix_company_invitations_normalized_email");
+
+                    b.ToTable("company_invitations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_company_invitations_status", "status IN ('Pending', 'Accepted', 'Declined', 'Revoked')");
+                        });
+                });
+
             modelBuilder.Entity("DampCode_API.Models.CompanyMembership", b =>
                 {
                     b.Property<Guid>("Id")
@@ -244,6 +315,188 @@ namespace DampCode_API.Data.Migrations
                         .HasDatabaseName("ix_company_technologies_technology_id");
 
                     b.ToTable("company_technologies", (string)null);
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Hackathon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Area")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("area");
+
+                    b.Property<string>("BackgroundColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("background_color");
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_account_id");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateTime?>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
+                    b.Property<string>("EvaluationMethod")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("evaluation_method");
+
+                    b.Property<string>("Logo")
+                        .HasColumnType("text")
+                        .HasColumnName("logo");
+
+                    b.Property<string>("LogoStorageKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("logo_storage_key");
+
+                    b.Property<string>("ParticipationMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("participation_mode");
+
+                    b.Property<string>("PrimaryColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("primary_color");
+
+                    b.Property<decimal?>("PrizeAmount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("prize_amount");
+
+                    b.Property<DateTime?>("ReviewEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("review_ends_at");
+
+                    b.Property<string>("RewardType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reward_type");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_at");
+
+                    b.Property<string>("SecondaryColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("secondary_color");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(220)
+                        .HasColumnType("character varying(220)")
+                        .HasColumnName("slug");
+
+                    b.Property<DateTime?>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("WinnersCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("winners_count");
+
+                    b.HasKey("Id")
+                        .HasName("pk_hackathons");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_hackathons_company_id");
+
+                    b.HasIndex("CreatedByAccountId")
+                        .HasDatabaseName("ix_hackathons_created_by_account_id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ux_hackathons_slug");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_hackathons_status");
+
+                    b.ToTable("hackathons", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_hackathons_dates", "starts_at IS NULL OR ends_at IS NULL OR review_ends_at IS NULL OR (starts_at < ends_at AND ends_at < review_ends_at)");
+
+                            t.HasCheckConstraint("ck_hackathons_participation_mode", "participation_mode IN ('Individual', 'Team')");
+
+                            t.HasCheckConstraint("ck_hackathons_reward_type", "reward_type IS NULL OR reward_type IN ('Money', 'Interview')");
+
+                            t.HasCheckConstraint("ck_hackathons_status", "status IN ('Draft', 'Scheduled', 'Active', 'InReview', 'Closed', 'Cancelled')");
+
+                            t.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count IN (1, 10, 15, 20, 50, 100)");
+                        });
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonTechnology", b =>
+                {
+                    b.Property<Guid>("HackathonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hackathon_id");
+
+                    b.Property<Guid>("TechnologyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("technology_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.HasKey("HackathonId", "TechnologyId")
+                        .HasName("pk_hackathon_technologies");
+
+                    b.HasIndex("TechnologyId")
+                        .HasDatabaseName("ix_hackathon_technologies_technology_id");
+
+                    b.ToTable("hackathon_technologies", (string)null);
                 });
 
             modelBuilder.Entity("DampCode_API.Models.Technology", b =>
@@ -379,6 +632,27 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("PrimaryAccount");
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.CompanyInvitation", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Company", "Company")
+                        .WithMany("Invitations")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_invitations_companies");
+
+                    b.HasOne("DampCode_API.Models.Account", "InvitedByAccount")
+                        .WithMany()
+                        .HasForeignKey("InvitedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_company_invitations_accounts");
+
+                    b.Navigation("Company");
+
+                    b.Navigation("InvitedByAccount");
+                });
+
             modelBuilder.Entity("DampCode_API.Models.CompanyMembership", b =>
                 {
                     b.HasOne("DampCode_API.Models.Account", "Account")
@@ -417,6 +691,46 @@ namespace DampCode_API.Data.Migrations
                         .HasConstraintName("fk_company_technologies_technologies");
 
                     b.Navigation("Company");
+
+                    b.Navigation("Technology");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Hackathon", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Company", "Company")
+                        .WithMany("Hackathons")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathons_companies");
+
+                    b.HasOne("DampCode_API.Models.Account", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathons_accounts");
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonTechnology", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
+                        .WithMany("Technologies")
+                        .HasForeignKey("HackathonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_technologies_hackathons");
+
+                    b.HasOne("DampCode_API.Models.Technology", "Technology")
+                        .WithMany("Hackathons")
+                        .HasForeignKey("TechnologyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_technologies_technologies");
+
+                    b.Navigation("Hackathon");
 
                     b.Navigation("Technology");
                 });
@@ -465,14 +779,25 @@ namespace DampCode_API.Data.Migrations
 
             modelBuilder.Entity("DampCode_API.Models.Company", b =>
                 {
+                    b.Navigation("Hackathons");
+
+                    b.Navigation("Invitations");
+
                     b.Navigation("Memberships");
 
+                    b.Navigation("Technologies");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Hackathon", b =>
+                {
                     b.Navigation("Technologies");
                 });
 
             modelBuilder.Entity("DampCode_API.Models.Technology", b =>
                 {
                     b.Navigation("Companies");
+
+                    b.Navigation("Hackathons");
 
                     b.Navigation("Users");
                 });
