@@ -259,6 +259,30 @@ public sealed class CompanyServiceTests
     }
 
     [Fact]
+    public async Task AcceptInvitation_CancelsPendingTeamItemsInCompanyHackathons()
+    {
+        var (company, participant) = await CompanyAndParticipantAsync();
+        var hackathon = await ParticipationSeed.PublishedHackathonAsync(_dbContext, company, HackathonParticipationMode.Team);
+        var owner = await CompanySeed.ParticipantAsync(_dbContext, "dona@exemplo.com");
+        var team = new HackathonTeam { HackathonId = hackathon.Id, CreatedByAccountId = owner.Id, Name = "Equipe", NormalizedName = "EQUIPE", IsOpen = true, MemberCount = 1 };
+        _dbContext.HackathonTeams.Add(team);
+        _dbContext.TeamInvitations.Add(new TeamInvitation
+        {
+            TeamId = team.Id, InvitedByAccountId = owner.Id, Email = "maria@exemplo.com", NormalizedEmail = "MARIA@EXEMPLO.COM",
+            ExpiresAt = DateTime.UtcNow.AddHours(24)
+        });
+        _dbContext.TeamJoinRequests.Add(new TeamJoinRequest { TeamId = team.Id, AccountId = participant.Id });
+        await _dbContext.SaveChangesAsync();
+        var invitation = await InviteAsync(company);
+
+        var result = await _service.AcceptInvitationAsync(participant.Id, invitation.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(TeamInvitationStatus.Cancelled, _dbContext.TeamInvitations.Single().Status);
+        Assert.Equal(TeamJoinRequestStatus.Cancelled, _dbContext.TeamJoinRequests.Single().Status);
+    }
+
+    [Fact]
     public async Task AcceptInvitation_RegisteredInClosedCompanyHackathon_Succeeds()
     {
         var (company, participant) = await CompanyAndParticipantAsync();

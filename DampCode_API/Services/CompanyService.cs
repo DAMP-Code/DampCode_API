@@ -119,6 +119,23 @@ public sealed class CompanyService(DampCodeDbContext dbContext, ICompanyAccessSe
         });
         invitation.Status = CompanyInvitationStatus.Accepted;
         invitation.RespondedAt = now;
+        // Funcionário não participa dos Hackathons da empresa: convites e pedidos de equipe neles não teriam como ser aceitos.
+        foreach (var teamInvitation in await dbContext.TeamInvitations
+                     .Where(item => item.NormalizedEmail == account.NormalizedEmail && item.Status == TeamInvitationStatus.Pending
+                         && item.Team.Hackathon.CompanyId == invitation.CompanyId)
+                     .ToListAsync(cancellationToken))
+        {
+            teamInvitation.Status = TeamInvitationStatus.Cancelled;
+            teamInvitation.RespondedAt = now;
+        }
+        foreach (var request in await dbContext.TeamJoinRequests
+                     .Where(item => item.AccountId == account.Id && item.Status == TeamJoinRequestStatus.Pending
+                         && item.Team.Hackathon.CompanyId == invitation.CompanyId)
+                     .ToListAsync(cancellationToken))
+        {
+            request.Status = TeamJoinRequestStatus.Cancelled;
+            request.RespondedAt = now;
+        }
         try
         {
             await dbContext.SaveChangesAsync(cancellationToken);
