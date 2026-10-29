@@ -476,6 +476,65 @@ namespace DampCode_API.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.HackathonTeam", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_account_id");
+
+                    b.Property<Guid>("HackathonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hackathon_id");
+
+                    b.Property<bool>("IsOpen")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_open");
+
+                    b.Property<int>("MemberCount")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("member_count");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("normalized_name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_hackathon_teams");
+
+                    b.HasIndex("CreatedByAccountId")
+                        .HasDatabaseName("ix_hackathon_teams_created_by_account_id");
+
+                    b.HasIndex("HackathonId", "NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("ux_hackathon_teams_hackathon_name");
+
+                    b.ToTable("hackathon_teams", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_hackathon_teams_member_count", "member_count BETWEEN 0 AND 5");
+                        });
+                });
+
             modelBuilder.Entity("DampCode_API.Models.HackathonTechnology", b =>
                 {
                     b.Property<Guid>("HackathonId")
@@ -497,6 +556,174 @@ namespace DampCode_API.Data.Migrations
                         .HasDatabaseName("ix_hackathon_technologies_technology_id");
 
                     b.ToTable("hackathon_technologies", (string)null);
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Participation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("HackathonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hackathon_id");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("joined_at");
+
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("left_at");
+
+                    b.Property<Guid?>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_participations");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_participations_account_id");
+
+                    b.HasIndex("TeamId")
+                        .HasDatabaseName("ix_participations_team_id");
+
+                    b.HasIndex("HackathonId", "AccountId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_participations_active_account")
+                        .HasFilter("left_at IS NULL");
+
+                    b.ToTable("participations", (string)null);
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.TeamInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("InvitedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("invited_by_account_id");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("responded_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_team_invitations");
+
+                    b.HasIndex("InvitedByAccountId")
+                        .HasDatabaseName("ix_team_invitations_invited_by_account_id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .HasDatabaseName("ix_team_invitations_normalized_email");
+
+                    b.HasIndex("TeamId")
+                        .HasDatabaseName("ix_team_invitations_team_id");
+
+                    b.ToTable("team_invitations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_team_invitations_status", "status IN ('Pending', 'Accepted', 'Declined', 'Revoked', 'Cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.TeamJoinRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("responded_at");
+
+                    b.Property<Guid?>("RespondedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("responded_by_account_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("team_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_team_join_requests");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("ix_team_join_requests_account_id");
+
+                    b.HasIndex("TeamId")
+                        .HasDatabaseName("ix_team_join_requests_team_id");
+
+                    b.ToTable("team_join_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_team_join_requests_status", "status IN ('Pending', 'Accepted', 'Declined', 'Cancelled')");
+                        });
                 });
 
             modelBuilder.Entity("DampCode_API.Models.Technology", b =>
@@ -714,6 +941,25 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.HackathonTeam", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Account", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_teams_accounts");
+
+                    b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
+                        .WithMany("Teams")
+                        .HasForeignKey("HackathonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_teams_hackathons");
+
+                    b.Navigation("Hackathon");
+                });
+
             modelBuilder.Entity("DampCode_API.Models.HackathonTechnology", b =>
                 {
                     b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
@@ -733,6 +979,77 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("Hackathon");
 
                     b.Navigation("Technology");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.Participation", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_participations_accounts");
+
+                    b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
+                        .WithMany("Participations")
+                        .HasForeignKey("HackathonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_participations_hackathons");
+
+                    b.HasOne("DampCode_API.Models.HackathonTeam", "Team")
+                        .WithMany("Members")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_participations_hackathon_teams");
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Hackathon");
+
+                    b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.TeamInvitation", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Account", "InvitedByAccount")
+                        .WithMany()
+                        .HasForeignKey("InvitedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_team_invitations_accounts");
+
+                    b.HasOne("DampCode_API.Models.HackathonTeam", "Team")
+                        .WithMany("Invitations")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_team_invitations_hackathon_teams");
+
+                    b.Navigation("InvitedByAccount");
+
+                    b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.TeamJoinRequest", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Account", "Account")
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_team_join_requests_accounts");
+
+                    b.HasOne("DampCode_API.Models.HackathonTeam", "Team")
+                        .WithMany("JoinRequests")
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_team_join_requests_hackathon_teams");
+
+                    b.Navigation("Account");
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("DampCode_API.Models.UserProfile", b =>
@@ -790,7 +1107,20 @@ namespace DampCode_API.Data.Migrations
 
             modelBuilder.Entity("DampCode_API.Models.Hackathon", b =>
                 {
+                    b.Navigation("Participations");
+
+                    b.Navigation("Teams");
+
                     b.Navigation("Technologies");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonTeam", b =>
+                {
+                    b.Navigation("Invitations");
+
+                    b.Navigation("JoinRequests");
+
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("DampCode_API.Models.Technology", b =>

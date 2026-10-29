@@ -35,6 +35,8 @@ public sealed class Hackathon
     public DateTime? DeletedAt { get; set; }
     public Company Company { get; set; } = null!;
     public ICollection<HackathonTechnology> Technologies { get; set; } = [];
+    public ICollection<HackathonTeam> Teams { get; set; } = [];
+    public ICollection<Participation> Participations { get; set; } = [];
 }
 
 public sealed class HackathonTechnology

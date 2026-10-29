@@ -15,6 +15,10 @@ public sealed class DampCodeDbContext(DbContextOptions<DampCodeDbContext> option
     public DbSet<CompanyInvitation> CompanyInvitations => Set<CompanyInvitation>();
     public DbSet<Hackathon> Hackathons => Set<Hackathon>();
     public DbSet<HackathonTechnology> HackathonTechnologies => Set<HackathonTechnology>();
+    public DbSet<HackathonTeam> HackathonTeams => Set<HackathonTeam>();
+    public DbSet<Participation> Participations => Set<Participation>();
+    public DbSet<TeamInvitation> TeamInvitations => Set<TeamInvitation>();
+    public DbSet<TeamJoinRequest> TeamJoinRequests => Set<TeamJoinRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DampCodeDbContext).Assembly);
