@@ -209,6 +209,48 @@ public sealed class HackathonServiceTests
     }
 
     [Fact]
+    public async Task Create_InvalidColor_ReturnsValidation()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.corFundo = "red;background:url(x)";
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("As cores devem estar no formato #RRGGBB.", result.Message);
+    }
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")]
+    public async Task Create_LogoNotRasterImage_ReturnsValidation(string logo)
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.Logo = logo;
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("O logo deve ser uma imagem PNG, JPEG, WEBP ou GIF.", result.Message);
+    }
+
+    [Fact]
+    public async Task Update_PublishedInvalidColor_ReturnsValidation()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        var dto = CompleteDto();
+        dto.corPrincipal = "#12345";
+
+        var result = await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("#6C48C5", Stored(published.Id.ToString()).PrimaryColor);
+    }
+
+    [Fact]
     public async Task Update_Draft_ReplacesAllFields()
     {
         var company = await CompanySeed.CompanyAsync(_dbContext);
@@ -322,5 +364,289 @@ public sealed class HackathonServiceTests
 
         Assert.Equal(HackathonServiceError.Conflict, result.Error);
         Assert.Equal("Só é possível apagar rascunhos. Use cancelar.", result.Message);
+    }
+
+    private async Task<Company> VerifiedCompanyAsync(string email = "empresa@exemplo.com") =>
+        await CompanySeed.CompanyAsync(_dbContext, email, CompanyVerificationStatus.Verified);
+
+    private Task<HackathonServiceResult<HackathonResponseDto>> PublishAsync(Company company, string id) =>
+        _service.PublishAsync(company.PrimaryAccountId, Guid.Parse(id), CancellationToken.None);
+
+    [Fact]
+    public async Task Publish_VerifiedComplete_SchedulesIt()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company);
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Publicado", result.Value!.Fase);
+        Assert.True(result.Value.Status);
+        var stored = Stored(created.HackathonId);
+        Assert.Equal(HackathonStatus.Scheduled, stored.Status);
+        Assert.NotNull(stored.ScheduledAt);
+    }
+
+    [Fact]
+    public async Task Publish_UnverifiedCompany_ReturnsForbidden()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var created = await CreateAsync(company);
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.Equal(HackathonServiceError.Forbidden, result.Error);
+        Assert.Equal("Sua empresa precisa ser verificada para publicar.", result.Message);
+    }
+
+    [Fact]
+    public async Task Publish_MissingFields_ListsThem()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company, new CreateHackathonDto
+        {
+            Titulo = "Só o básico",
+            Descricao = "Descrição do rascunho incompleto",
+            Area = "web",
+            Formato = "Individual"
+        });
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("Preencha antes de publicar: tecnologias, data de início, fim das submissões, fim da avaliação, "
+            + "tipo de premiação, quantos ganham, método de avaliação.", result.Message);
+    }
+
+    [Fact]
+    public async Task Publish_StartInPast_ReturnsValidation()
+    {
+        var company = await VerifiedCompanyAsync();
+        var dto = CompleteDto();
+        dto.DataInicio = DateTime.UtcNow.AddMinutes(-1);
+        var created = await CreateAsync(company, dto);
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("A data de início precisa ser no futuro.", result.Message);
+    }
+
+    [Fact]
+    public async Task Publish_DatesOutOfOrder_ReturnsValidation()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company);
+        var stored = _dbContext.Hackathons.Single();
+        stored.ReviewEndsAt = stored.EndsAt!.Value.AddHours(-1);
+        await _dbContext.SaveChangesAsync();
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("As datas precisam seguir: início, fim das submissões, fim da avaliação.", result.Message);
+    }
+
+    [Fact]
+    public async Task Publish_InterviewWithoutPrize_Succeeds()
+    {
+        var company = await VerifiedCompanyAsync();
+        var dto = CompleteDto();
+        dto.TipoPremiacao = "Entrevista";
+        dto.Premiacao = null;
+        var created = await CreateAsync(company, dto);
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Entrevista", result.Value!.TipoPremiacao);
+    }
+
+    [Fact]
+    public async Task Publish_MoneyWithoutPrize_ListsPrize()
+    {
+        var company = await VerifiedCompanyAsync();
+        var dto = CompleteDto();
+        dto.Premiacao = 0;
+        var created = await CreateAsync(company, dto);
+
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.Equal("Preencha antes de publicar: premiação.", result.Message);
+    }
+
+    [Fact]
+    public async Task Publish_AlreadyPublished_ReturnsConflict()
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+
+        var result = await PublishAsync(company, hackathon.Id.ToString());
+
+        Assert.Equal(HackathonServiceError.Conflict, result.Error);
+        Assert.Equal("Este Hackathon já foi publicado.", result.Message);
+    }
+
+    [Fact]
+    public async Task Publish_ByEmployee_Succeeds()
+    {
+        var company = await VerifiedCompanyAsync();
+        var employee = await CompanySeed.ParticipantAsync(_dbContext, "maria@exemplo.com");
+        _dbContext.CompanyMemberships.Add(new CompanyMembership { CompanyId = company.Id, AccountId = employee.Id });
+        await _dbContext.SaveChangesAsync();
+        var created = await CreateAsync(company);
+
+        var result = await _service.PublishAsync(employee.Id, Guid.Parse(created.HackathonId), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    [Fact]
+    public async Task Update_RemovedEmployee_ReturnsForbidden()
+    {
+        var company = await VerifiedCompanyAsync();
+        var employee = await CompanySeed.ParticipantAsync(_dbContext, "maria@exemplo.com");
+        _dbContext.CompanyMemberships.Add(new CompanyMembership { CompanyId = company.Id, AccountId = employee.Id, EndedAt = DateTime.UtcNow });
+        await _dbContext.SaveChangesAsync();
+        var created = await CreateAsync(company);
+
+        var result = await _service.UpdateAsync(employee.Id, Guid.Parse(created.HackathonId), CompleteDto(), CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Forbidden, result.Error);
+    }
+
+    [Fact]
+    public async Task Cancel_Published_CancelsIt()
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+
+        var result = await _service.CancelAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Cancelado", result.Value!.Fase);
+        Assert.NotNull(Stored(hackathon.Id.ToString()).CancelledAt);
+    }
+
+    [Fact]
+    public async Task Cancel_Cancelled_ReturnsConflict()
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        await _service.CancelAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        var result = await _service.CancelAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Conflict, result.Error);
+        Assert.Equal("Este Hackathon já foi encerrado ou cancelado.", result.Message);
+    }
+
+    [Fact]
+    public async Task Close_OutsideReview_ReturnsConflict()
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+
+        var result = await _service.CloseAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Conflict, result.Error);
+        Assert.Equal("Só é possível encerrar durante a avaliação.", result.Message);
+    }
+
+    [Fact]
+    public async Task Close_InReview_ClosesIt()
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(-4));
+
+        var result = await _service.CloseAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Encerrado", result.Value!.Fase);
+        var stored = Stored(hackathon.Id.ToString());
+        Assert.Equal(HackathonStatus.Closed, stored.Status);
+        Assert.NotNull(stored.ClosedAt);
+    }
+
+    [Fact]
+    public async Task GetPublic_HidesDraftAndCancelled_ClosedLast()
+    {
+        var company = await VerifiedCompanyAsync();
+        await CreateAsync(company);
+        var cancelled = await PublishedAsync(company, DateTime.UtcNow.AddDays(1), "Cancelado");
+        await _service.CancelAsync(company.PrimaryAccountId, cancelled.Id, CancellationToken.None);
+        await PublishedAsync(company, DateTime.UtcNow.AddDays(-10), "Encerrado");
+        await PublishedAsync(company, DateTime.UtcNow.AddDays(5), "Depois");
+        await PublishedAsync(company, DateTime.UtcNow.AddDays(2), "Antes");
+
+        var hackathons = await _service.GetPublicAsync(CancellationToken.None);
+
+        Assert.Equal(["Antes", "Depois", "Encerrado"], hackathons.Select(item => item.Titulo));
+        Assert.Equal("Encerrado", hackathons[2].Fase);
+        Assert.False(hackathons[2].Status);
+    }
+
+    [Fact]
+    public async Task GetCompanyHackathons_IncludesDrafts()
+    {
+        var company = await VerifiedCompanyAsync();
+        var other = await VerifiedCompanyAsync("outra@exemplo.com");
+        await CreateAsync(company);
+        await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        await PublishedAsync(other, DateTime.UtcNow.AddDays(2), "Outra");
+
+        var result = await _service.GetCompanyHackathonsAsync(company.PrimaryAccountId, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(2, result.Value!.Count);
+        Assert.Contains(result.Value, item => item.Fase == "Rascunho");
+    }
+
+    [Fact]
+    public async Task GetCompanyHackathons_Participant_ReturnsForbidden()
+    {
+        var participant = await CompanySeed.ParticipantAsync(_dbContext, "maria@exemplo.com");
+
+        var result = await _service.GetCompanyHackathonsAsync(participant.Id, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Forbidden, result.Error);
+    }
+
+    [Fact]
+    public async Task GetById_DraftForAnonymous_ReturnsNotFound()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company);
+
+        var result = await _service.GetByIdAsync(null, created.HackathonId, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.NotFound, result.Error);
+        Assert.Equal("Hackathon não encontrado.", result.Message);
+    }
+
+    [Fact]
+    public async Task GetById_DraftForManager_ReturnsIt()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company);
+
+        var result = await _service.GetByIdAsync(company.PrimaryAccountId, created.HackathonId, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Rascunho", result.Value!.Fase);
+    }
+
+    [Fact]
+    public async Task GetById_BySlug_ReturnsPublished()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company);
+        await PublishAsync(company, created.HackathonId);
+
+        var result = await _service.GetByIdAsync(null, "desafio-de-rotas", CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(created.HackathonId, result.Value!.HackathonId);
     }
 }

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using DampCode_API.Data;
 using DampCode_API.Dto;
 using DampCode_API.Models;
@@ -11,6 +12,8 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
 {
     private const int MaxLogoLength = 2 * 1024 * 1024;
     private static readonly int[] WinnersCounts = [1, 10, 15, 20, 50, 100];
+    private static readonly Regex ColorPattern = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
+    private static readonly Regex LogoPattern = new("^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$", RegexOptions.Compiled);
     private const string NoCompanyMessage = "Apenas empresas e seus funcionários podem gerenciar Hackathons.";
     private const string NotFoundMessage = "Hackathon não encontrado.";
     private const string DatesOrderMessage = "As datas precisam seguir: início, fim das submissões, fim da avaliação.";
@@ -46,7 +49,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
 
     public async Task<HackathonServiceResult<HackathonResponseDto>> UpdateAsync(Guid accountId, Guid hackathonId, CreateHackathonDto dto, CancellationToken cancellationToken)
     {
-        var (hackathon, failure) = await FindManagedAsync<HackathonResponseDto>(accountId, hackathonId, cancellationToken);
+        var (hackathon, _, failure) = await FindManagedAsync<HackathonResponseDto>(accountId, hackathonId, cancellationToken);
         if (hackathon is null) return failure!;
 
         var now = DateTime.UtcNow;
@@ -63,9 +66,9 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             await SetTechnologiesAsync(hackathon, dto.Tecnologias ?? [], cancellationToken);
         }
         // Depois de publicado, só o visual muda; os campos cruciais que vierem são ignorados.
-        else if (dto.Logo?.Length > MaxLogoLength)
+        else if (ValidateVisual(dto) is { } error)
         {
-            return Fail<HackathonResponseDto>(HackathonServiceError.Validation, "O logo deve ter no máximo 2 MB.");
+            return Fail<HackathonResponseDto>(HackathonServiceError.Validation, error);
         }
         ApplyVisual(hackathon, dto);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -74,7 +77,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
 
     public async Task<HackathonServiceResult<bool>> DeleteAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
     {
-        var (hackathon, failure) = await FindManagedAsync<bool>(accountId, hackathonId, cancellationToken);
+        var (hackathon, _, failure) = await FindManagedAsync<bool>(accountId, hackathonId, cancellationToken);
         if (hackathon is null) return failure!;
         if (hackathon.Status != HackathonStatus.Draft)
             return Fail<bool>(HackathonServiceError.Conflict, "Só é possível apagar rascunhos. Use cancelar.");
@@ -84,15 +87,125 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         return new(true, true);
     }
 
-    private async Task<(Hackathon? Hackathon, HackathonServiceResult<T>? Failure)> FindManagedAsync<T>(
+    public async Task<HackathonServiceResult<HackathonResponseDto>> PublishAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var (hackathon, company, failure) = await FindManagedAsync<HackathonResponseDto>(accountId, hackathonId, cancellationToken);
+        if (hackathon is null) return failure!;
+        if (hackathon.Status != HackathonStatus.Draft) return Fail<HackathonResponseDto>(HackathonServiceError.Conflict, "Este Hackathon já foi publicado.");
+        if (!company!.CanPublish) return Fail<HackathonResponseDto>(HackathonServiceError.Forbidden, "Sua empresa precisa ser verificada para publicar.");
+
+        var missing = MissingCrucialFields(hackathon);
+        if (missing.Count > 0)
+            return Fail<HackathonResponseDto>(HackathonServiceError.Validation, $"Preencha antes de publicar: {string.Join(", ", missing)}.");
+        var now = DateTime.UtcNow;
+        if (hackathon.StartsAt <= now) return Fail<HackathonResponseDto>(HackathonServiceError.Validation, "A data de início precisa ser no futuro.");
+        if (!(hackathon.StartsAt < hackathon.EndsAt && hackathon.EndsAt < hackathon.ReviewEndsAt))
+            return Fail<HackathonResponseDto>(HackathonServiceError.Validation, DatesOrderMessage);
+
+        hackathon.Status = HackathonStatus.Scheduled;
+        hackathon.ScheduledAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, ToDto(hackathon, now));
+    }
+
+    public async Task<HackathonServiceResult<HackathonResponseDto>> CancelAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var (hackathon, _, failure) = await FindManagedAsync<HackathonResponseDto>(accountId, hackathonId, cancellationToken);
+        if (hackathon is null) return failure!;
+        var now = DateTime.UtcNow;
+        if (HackathonPhases.GetPhase(hackathon, now) is HackathonPhase.Closed or HackathonPhase.Cancelled)
+            return Fail<HackathonResponseDto>(HackathonServiceError.Conflict, FinishedMessage);
+
+        hackathon.Status = HackathonStatus.Cancelled;
+        hackathon.CancelledAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, ToDto(hackathon, now));
+    }
+
+    public async Task<HackathonServiceResult<HackathonResponseDto>> CloseAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var (hackathon, _, failure) = await FindManagedAsync<HackathonResponseDto>(accountId, hackathonId, cancellationToken);
+        if (hackathon is null) return failure!;
+        var now = DateTime.UtcNow;
+        if (HackathonPhases.GetPhase(hackathon, now) != HackathonPhase.InReview)
+            return Fail<HackathonResponseDto>(HackathonServiceError.Conflict, "Só é possível encerrar durante a avaliação.");
+
+        hackathon.Status = HackathonStatus.Closed;
+        hackathon.ClosedAt = now;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, ToDto(hackathon, now));
+    }
+
+    public async Task<IReadOnlyList<HackathonResponseDto>> GetPublicAsync(CancellationToken cancellationToken)
+    {
+        var hackathons = await WithDetails(dbContext.Hackathons.AsNoTracking())
+            .Where(item => item.Status == HackathonStatus.Scheduled || item.Status == HackathonStatus.Closed)
+            .ToListAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        return hackathons
+            .OrderBy(item => HackathonPhases.GetPhase(item, now) == HackathonPhase.Closed)
+            .ThenBy(item => item.StartsAt)
+            .Select(item => ToDto(item, now))
+            .ToList();
+    }
+
+    public async Task<HackathonServiceResult<IReadOnlyList<HackathonResponseDto>>> GetCompanyHackathonsAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var company = await companyAccessService.GetManagedCompanyAsync(accountId, cancellationToken);
+        if (company is null) return Fail<IReadOnlyList<HackathonResponseDto>>(HackathonServiceError.Forbidden, NoCompanyMessage);
+
+        var hackathons = await WithDetails(dbContext.Hackathons.AsNoTracking())
+            .Where(item => item.CompanyId == company.CompanyId)
+            .OrderByDescending(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var now = DateTime.UtcNow;
+        return new(true, hackathons.Select(item => ToDto(item, now)).ToList());
+    }
+
+    // {id} aceita o Guid ou o slug. Rascunho e cancelado só aparecem para quem gerencia a empresa.
+    public async Task<HackathonServiceResult<HackathonResponseDto>> GetByIdAsync(Guid? accountId, string id, CancellationToken cancellationToken)
+    {
+        var query = WithDetails(dbContext.Hackathons.AsNoTracking());
+        var hackathon = Guid.TryParse(id, out var hackathonId)
+            ? await query.SingleOrDefaultAsync(item => item.Id == hackathonId, cancellationToken)
+            : await query.SingleOrDefaultAsync(item => item.Slug == id, cancellationToken);
+        if (hackathon is null) return Fail<HackathonResponseDto>(HackathonServiceError.NotFound, NotFoundMessage);
+
+        var now = DateTime.UtcNow;
+        if (HackathonPhases.GetPhase(hackathon, now) is HackathonPhase.Draft or HackathonPhase.Cancelled)
+        {
+            var company = accountId is null ? null : await companyAccessService.GetManagedCompanyAsync(accountId.Value, cancellationToken);
+            if (company?.CompanyId != hackathon.CompanyId) return Fail<HackathonResponseDto>(HackathonServiceError.NotFound, NotFoundMessage);
+        }
+        return new(true, ToDto(hackathon, now));
+    }
+
+    private static List<string> MissingCrucialFields(Hackathon hackathon)
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(hackathon.Title)) missing.Add("título");
+        if (string.IsNullOrWhiteSpace(hackathon.Description)) missing.Add("descrição");
+        if (string.IsNullOrWhiteSpace(hackathon.Area)) missing.Add("área");
+        if (hackathon.Technologies.Count == 0) missing.Add("tecnologias");
+        if (hackathon.StartsAt is null) missing.Add("data de início");
+        if (hackathon.EndsAt is null) missing.Add("fim das submissões");
+        if (hackathon.ReviewEndsAt is null) missing.Add("fim da avaliação");
+        if (hackathon.RewardType is null) missing.Add("tipo de premiação");
+        if (hackathon.RewardType == HackathonRewardType.Money && !(hackathon.PrizeAmount > 0)) missing.Add("premiação");
+        if (hackathon.WinnersCount is null) missing.Add("quantos ganham");
+        if (string.IsNullOrWhiteSpace(hackathon.EvaluationMethod)) missing.Add("método de avaliação");
+        return missing;
+    }
+
+    private async Task<(Hackathon? Hackathon, CompanyAccessDto? Company, HackathonServiceResult<T>? Failure)> FindManagedAsync<T>(
         Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
     {
         var company = await companyAccessService.GetManagedCompanyAsync(accountId, cancellationToken);
-        if (company is null) return (null, Fail<T>(HackathonServiceError.Forbidden, NoCompanyMessage));
+        if (company is null) return (null, null, Fail<T>(HackathonServiceError.Forbidden, NoCompanyMessage));
 
         var hackathon = await WithDetails(dbContext.Hackathons)
             .SingleOrDefaultAsync(item => item.Id == hackathonId && item.CompanyId == company.CompanyId, cancellationToken);
-        return hackathon is null ? (null, Fail<T>(HackathonServiceError.NotFound, NotFoundMessage)) : (hackathon, null);
+        return hackathon is null ? (null, company, Fail<T>(HackathonServiceError.NotFound, NotFoundMessage)) : (hackathon, company, null);
     }
 
     private static IQueryable<Hackathon> WithDetails(IQueryable<Hackathon> query) =>
@@ -106,7 +219,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         if (string.IsNullOrWhiteSpace(dto.Area)) missing.Add("área");
         if (ParseParticipationMode(dto.Formato) is null) missing.Add("formato");
         if (missing.Count > 0) return $"Preencha: {string.Join(", ", missing)}.";
-        if (dto.Logo?.Length > MaxLogoLength) return "O logo deve ter no máximo 2 MB.";
+        if (ValidateVisual(dto) is { } visualError) return visualError;
 
         var startsAt = ToUtc(dto.DataInicio);
         var endsAt = ToUtc(dto.DataFinal);
@@ -114,6 +227,16 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         if (startsAt is not null && endsAt is not null && reviewEndsAt is not null && !(startsAt < endsAt && endsAt < reviewEndsAt))
             return DatesOrderMessage;
         return null;
+    }
+
+    // Cores e logo vão direto para style/src no front: só #RRGGBB e imagem raster em data URL (sem SVG).
+    private static string? ValidateVisual(CreateHackathonDto dto)
+    {
+        if (new[] { dto.corPrincipal, dto.corSecundaria, dto.corFundo }.Any(color => !string.IsNullOrWhiteSpace(color) && !ColorPattern.IsMatch(color.Trim())))
+            return "As cores devem estar no formato #RRGGBB.";
+        if (string.IsNullOrWhiteSpace(dto.Logo)) return null;
+        if (dto.Logo.Length > MaxLogoLength) return "O logo deve ter no máximo 2 MB.";
+        return LogoPattern.IsMatch(dto.Logo.Trim()) ? null : "O logo deve ser uma imagem PNG, JPEG, WEBP ou GIF.";
     }
 
     private static void ApplyContent(Hackathon hackathon, CreateHackathonDto dto)
