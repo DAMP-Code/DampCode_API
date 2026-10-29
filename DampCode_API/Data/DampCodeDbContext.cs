@@ -13,6 +13,8 @@ public sealed class DampCodeDbContext(DbContextOptions<DampCodeDbContext> option
     public DbSet<UserTechnology> UserTechnologies => Set<UserTechnology>();
     public DbSet<CompanyTechnology> CompanyTechnologies => Set<CompanyTechnology>();
     public DbSet<CompanyInvitation> CompanyInvitations => Set<CompanyInvitation>();
+    public DbSet<Hackathon> Hackathons => Set<Hackathon>();
+    public DbSet<HackathonTechnology> HackathonTechnologies => Set<HackathonTechnology>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DampCodeDbContext).Assembly);

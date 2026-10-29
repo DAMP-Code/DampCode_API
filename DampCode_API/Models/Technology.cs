@@ -8,6 +8,7 @@ public sealed class Technology
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public ICollection<UserTechnology> Users { get; set; } = [];
     public ICollection<CompanyTechnology> Companies { get; set; } = [];
+    public ICollection<HackathonTechnology> Hackathons { get; set; } = [];
 }
 
 public sealed class UserTechnology

@@ -17,6 +17,7 @@ public sealed class Company
     public ICollection<CompanyMembership> Memberships { get; set; } = [];
     public ICollection<CompanyTechnology> Technologies { get; set; } = [];
     public ICollection<CompanyInvitation> Invitations { get; set; } = [];
+    public ICollection<Hackathon> Hackathons { get; set; } = [];
 }
 
 public enum CompanyVerificationStatus { Pending, Verified, Rejected }
