@@ -11,6 +11,7 @@ namespace DampCode_API.Services;
 public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccessService companyAccessService) : IHackathonService
 {
     private const int MaxLogoLength = 2 * 1024 * 1024;
+    private const decimal MaxPrizeAmount = 9_999_999_999.99m;
     private static readonly int[] WinnersCounts = [1, 10, 15, 20, 50, 100];
     private static readonly Regex ColorPattern = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
     private static readonly Regex LogoPattern = new("^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$", RegexOptions.Compiled);
@@ -219,6 +220,19 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         if (string.IsNullOrWhiteSpace(dto.Area)) missing.Add("área");
         if (ParseParticipationMode(dto.Formato) is null) missing.Add("formato");
         if (missing.Count > 0) return $"Preencha: {string.Join(", ", missing)}.";
+
+        // mesmos limites das colunas, para o PostgreSQL nunca recusar com erro 500
+        var limits = new (string Field, string? Value, int Limit)[]
+        {
+            ("título", dto.Titulo, 200),
+            ("descrição", dto.Descricao, 4000),
+            ("área", dto.Area, 100),
+            ("método de avaliação", dto.Metodo, 100),
+            ("tecnologias", dto.Tecnologias?.MaxBy(name => name?.Trim().Length ?? 0), 100)
+        };
+        foreach (var (field, value, limit) in limits)
+            if (value?.Trim().Length > limit) return $"O campo {field} deve ter no máximo {limit} caracteres.";
+        if (dto.Premiacao is < 0 or > MaxPrizeAmount) return "A premiação deve ficar entre 0 e 9.999.999.999,99.";
         if (ValidateVisual(dto) is { } visualError) return visualError;
 
         var startsAt = ToUtc(dto.DataInicio);
@@ -243,8 +257,9 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
     {
         hackathon.ParticipationMode = ParseParticipationMode(dto.Formato)!.Value;
         hackathon.EvaluationMethod = Blank(dto.Metodo);
-        hackathon.PrizeAmount = dto.Premiacao;
         hackathon.RewardType = ParseRewardType(dto.TipoPremiacao);
+        // valor em dinheiro não vale para premiação por entrevista
+        hackathon.PrizeAmount = hackathon.RewardType == HackathonRewardType.Interview ? null : dto.Premiacao;
         hackathon.WinnersCount = ParseWinnersCount(dto.Ranking);
         hackathon.StartsAt = ToUtc(dto.DataInicio);
         hackathon.EndsAt = ToUtc(dto.DataFinal);

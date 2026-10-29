@@ -208,6 +208,61 @@ public sealed class HackathonServiceTests
         Assert.Equal("O logo deve ter no máximo 2 MB.", result.Message);
     }
 
+    [Theory]
+    [InlineData("título", 200)]
+    [InlineData("descrição", 4000)]
+    [InlineData("área", 100)]
+    [InlineData("método de avaliação", 100)]
+    [InlineData("tecnologias", 100)]
+    public async Task Create_TextOverColumnLimit_ReturnsValidation(string field, int limit)
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        var text = new string('a', limit + 1);
+        switch (field)
+        {
+            case "título": dto.Titulo = text; break;
+            case "descrição": dto.Descricao = text; break;
+            case "área": dto.Area = text; break;
+            case "método de avaliação": dto.Metodo = text; break;
+            default: dto.Tecnologias = ["React", text]; break;
+        }
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal($"O campo {field} deve ter no máximo {limit} caracteres.", result.Message);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(10_000_000_000)]
+    public async Task Create_PrizeOutOfRange_ReturnsValidation(decimal prize)
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.Premiacao = prize;
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("A premiação deve ficar entre 0 e 9.999.999.999,99.", result.Message);
+    }
+
+    [Fact]
+    public async Task Create_InterviewReward_DropsPrizeAmount()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.TipoPremiacao = "Entrevista";
+        dto.Premiacao = 5000;
+
+        var hackathon = await CreateAsync(company, dto);
+
+        Assert.Null(Stored(hackathon.HackathonId).PrizeAmount);
+        Assert.Equal(0, hackathon.Premiacao);
+    }
+
     [Fact]
     public async Task Create_InvalidColor_ReturnsValidation()
     {
