@@ -704,4 +704,36 @@ public sealed class HackathonServiceTests
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(created.HackathonId, result.Value!.HackathonId);
     }
+
+    private async Task AddParticipantsAsync(Hackathon hackathon, int active, int left = 0)
+    {
+        for (var index = 0; index < active + left; index++)
+        {
+            var account = await CompanySeed.ParticipantAsync(_dbContext, $"p{index}-{Guid.NewGuid():N}@exemplo.com");
+            _dbContext.Participations.Add(new Participation
+            {
+                HackathonId = hackathon.Id,
+                AccountId = account.Id,
+                LeftAt = index < active ? null : DateTime.UtcNow
+            });
+        }
+        await _dbContext.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(0, 0, "0 pessoas já entraram")]
+    [InlineData(1, 0, "1 pessoa já entrou")]
+    [InlineData(2, 1, "2 pessoas já entraram")]
+    public async Task Participants_CountsActiveOnly(int active, int left, string expected)
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        await AddParticipantsAsync(hackathon, active, left);
+
+        var byId = await _service.GetByIdAsync(null, hackathon.Id.ToString(), CancellationToken.None);
+        var listed = (await _service.GetPublicAsync(CancellationToken.None)).Single();
+
+        Assert.Equal(expected, byId.Value!.Participantes);
+        Assert.Equal(expected, listed.Participantes);
+    }
 }

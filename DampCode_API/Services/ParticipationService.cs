@@ -280,6 +280,38 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
         return new(true, teams);
     }
 
+    // Painel do participante: inscrições ativas em qualquer fase (inclusive cancelado), convites e pedidos pendentes.
+    public async Task<ParticipationsOverviewDto> GetMineAsync(Guid accountId, CancellationToken cancellationToken)
+    {
+        var account = await dbContext.Accounts.AsNoTracking().SingleOrDefaultAsync(item => item.Id == accountId && item.DeletedAt == null, cancellationToken);
+        if (account is null) return new ParticipationsOverviewDto([], [], []);
+
+        var now = DateTime.UtcNow;
+        var participations = await dbContext.Participations.AsNoTracking()
+            .Include(item => item.Hackathon).ThenInclude(item => item.Company)
+            .Where(item => item.AccountId == accountId && item.LeftAt == null)
+            .ToListAsync(cancellationToken);
+        var inscricoes = new List<MyParticipationDto>();
+        foreach (var participation in participations.OrderBy(item => item.Hackathon.StartsAt))
+        {
+            var team = participation.TeamId is { } teamId ? await BuildTeamDtoAsync(teamId, cancellationToken) : null;
+            inscricoes.Add(ToDto(participation.Hackathon, team, now));
+        }
+
+        var received = await dbContext.TeamInvitations.AsNoTracking()
+            .Where(item => item.NormalizedEmail == account.NormalizedEmail && item.Status == TeamInvitationStatus.Pending && item.ExpiresAt > now)
+            .OrderBy(item => item.CreatedAt)
+            .Select(item => new TeamInvitationReceivedDto(item.Id, item.TeamId, item.Team.Name, item.Team.HackathonId, item.Team.Hackathon.Title,
+                item.InvitedByAccount.UserProfile != null ? item.InvitedByAccount.UserProfile.Name : item.InvitedByAccount.Email, item.ExpiresAt))
+            .ToListAsync(cancellationToken);
+        var sent = await dbContext.TeamJoinRequests.AsNoTracking()
+            .Where(item => item.AccountId == accountId && item.Status == TeamJoinRequestStatus.Pending)
+            .OrderBy(item => item.CreatedAt)
+            .Select(item => new TeamJoinRequestSentDto(item.Id, item.TeamId, item.Team.Name, item.Team.HackathonId, item.Team.Hackathon.Title))
+            .ToListAsync(cancellationToken);
+        return new ParticipationsOverviewDto(inscricoes, received, sent);
+    }
+
     // Pedido pendente de uma equipe em que quem responde é integrante, com o Hackathon ainda aceitando mudanças.
     private async Task<(TeamJoinRequest? Request, ParticipationServiceResult<T>? Failure)> FindTeamRequestAsync<T>(
         Guid accountId, Guid requestId, CancellationToken cancellationToken)

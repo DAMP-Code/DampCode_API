@@ -243,6 +243,37 @@ public sealed class CompanyServiceTests
     }
 
     [Fact]
+    public async Task AcceptInvitation_RegisteredInCompanyHackathon_ReturnsConflict()
+    {
+        var (company, participant) = await CompanyAndParticipantAsync();
+        var hackathon = await ParticipationSeed.PublishedHackathonAsync(_dbContext, company, HackathonParticipationMode.Individual);
+        _dbContext.Participations.Add(new Participation { HackathonId = hackathon.Id, AccountId = participant.Id });
+        await _dbContext.SaveChangesAsync();
+        var invitation = await InviteAsync(company);
+
+        var result = await _service.AcceptInvitationAsync(participant.Id, invitation.Id, CancellationToken.None);
+
+        Assert.Equal(CompanyServiceError.Conflict, result.Error);
+        Assert.Equal("Você está inscrito em um Hackathon desta empresa. Saia da inscrição antes de aceitar.", result.Message);
+        Assert.False(_dbContext.CompanyMemberships.Any());
+    }
+
+    [Fact]
+    public async Task AcceptInvitation_RegisteredInClosedCompanyHackathon_Succeeds()
+    {
+        var (company, participant) = await CompanyAndParticipantAsync();
+        var hackathon = await ParticipationSeed.PublishedHackathonAsync(_dbContext, company, HackathonParticipationMode.Individual,
+            DateTime.UtcNow.AddDays(-10));
+        _dbContext.Participations.Add(new Participation { HackathonId = hackathon.Id, AccountId = participant.Id });
+        await _dbContext.SaveChangesAsync();
+        var invitation = await InviteAsync(company);
+
+        var result = await _service.AcceptInvitationAsync(participant.Id, invitation.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+    }
+
+    [Fact]
     public async Task AcceptInvitation_Valid_CreatesMembershipAndMarksAccepted()
     {
         var (company, participant) = await CompanyAndParticipantAsync();

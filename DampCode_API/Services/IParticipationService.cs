@@ -19,6 +19,7 @@ public interface IParticipationService
     Task<ParticipationServiceResult<bool>> DeclineRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken);
     Task<ParticipationServiceResult<bool>> LeaveTeamAsync(Guid accountId, Guid teamId, CancellationToken cancellationToken);
     Task<ParticipationServiceResult<IReadOnlyList<OpenTeamDto>>> GetOpenTeamsAsync(Guid hackathonId, CancellationToken cancellationToken);
+    Task<ParticipationsOverviewDto> GetMineAsync(Guid accountId, CancellationToken cancellationToken);
 }
 
 public sealed record ParticipationServiceResult<T>(bool Succeeded, T? Value = default, ParticipationServiceError Error = ParticipationServiceError.None, string? Message = null);

@@ -45,7 +45,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         dbContext.Hackathons.Add(hackathon);
         await dbContext.SaveChangesAsync(cancellationToken);
         await dbContext.Entry(hackathon).Reference(item => item.Company).LoadAsync(cancellationToken);
-        return new(true, ToDto(hackathon, now));
+        return new(true, ToDto(hackathon, now, await CountParticipantsAsync(hackathon.Id, cancellationToken)));
     }
 
     public async Task<HackathonServiceResult<HackathonResponseDto>> UpdateAsync(Guid accountId, Guid hackathonId, CreateHackathonDto dto, CancellationToken cancellationToken)
@@ -73,7 +73,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         }
         ApplyVisual(hackathon, dto);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new(true, ToDto(hackathon, now));
+        return new(true, ToDto(hackathon, now, await CountParticipantsAsync(hackathon.Id, cancellationToken)));
     }
 
     public async Task<HackathonServiceResult<bool>> DeleteAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
@@ -106,7 +106,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         hackathon.Status = HackathonStatus.Scheduled;
         hackathon.ScheduledAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new(true, ToDto(hackathon, now));
+        return new(true, ToDto(hackathon, now, await CountParticipantsAsync(hackathon.Id, cancellationToken)));
     }
 
     public async Task<HackathonServiceResult<HackathonResponseDto>> CancelAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
@@ -120,7 +120,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         hackathon.Status = HackathonStatus.Cancelled;
         hackathon.CancelledAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new(true, ToDto(hackathon, now));
+        return new(true, ToDto(hackathon, now, await CountParticipantsAsync(hackathon.Id, cancellationToken)));
     }
 
     public async Task<HackathonServiceResult<HackathonResponseDto>> CloseAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
@@ -134,7 +134,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         hackathon.Status = HackathonStatus.Closed;
         hackathon.ClosedAt = now;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new(true, ToDto(hackathon, now));
+        return new(true, ToDto(hackathon, now, await CountParticipantsAsync(hackathon.Id, cancellationToken)));
     }
 
     public async Task<IReadOnlyList<HackathonResponseDto>> GetPublicAsync(CancellationToken cancellationToken)
@@ -143,10 +143,11 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             .Where(item => item.Status == HackathonStatus.Scheduled || item.Status == HackathonStatus.Closed)
             .ToListAsync(cancellationToken);
         var now = DateTime.UtcNow;
+        var counts = await CountParticipantsAsync(hackathons.Select(item => item.Id), cancellationToken);
         return hackathons
             .OrderBy(item => HackathonPhases.GetPhase(item, now) == HackathonPhase.Closed)
             .ThenBy(item => item.StartsAt)
-            .Select(item => ToDto(item, now))
+            .Select(item => ToDto(item, now, counts.GetValueOrDefault(item.Id)))
             .ToList();
     }
 
@@ -160,7 +161,8 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             .OrderByDescending(item => item.CreatedAt)
             .ToListAsync(cancellationToken);
         var now = DateTime.UtcNow;
-        return new(true, hackathons.Select(item => ToDto(item, now)).ToList());
+        var counts = await CountParticipantsAsync(hackathons.Select(item => item.Id), cancellationToken);
+        return new(true, hackathons.Select(item => ToDto(item, now, counts.GetValueOrDefault(item.Id))).ToList());
     }
 
     // {id} aceita o Guid ou o slug. Rascunho e cancelado só aparecem para quem gerencia a empresa.
@@ -178,7 +180,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             var company = accountId is null ? null : await companyAccessService.GetManagedCompanyAsync(accountId.Value, cancellationToken);
             if (company?.CompanyId != hackathon.CompanyId) return Fail<HackathonResponseDto>(HackathonServiceError.NotFound, NotFoundMessage);
         }
-        return new(true, ToDto(hackathon, now));
+        return new(true, ToDto(hackathon, now, await CountParticipantsAsync(hackathon.Id, cancellationToken)));
     }
 
     private static List<string> MissingCrucialFields(Hackathon hackathon)
@@ -337,7 +339,21 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         return slug.Length == 0 ? "hackathon" : slug;
     }
 
-    private static HackathonResponseDto ToDto(Hackathon hackathon, DateTime now)
+    // Inscrições ativas (sem LeftAt) contam como participantes; uma consulta agrupada para listas.
+    private async Task<Dictionary<Guid, int>> CountParticipantsAsync(IEnumerable<Guid> hackathonIds, CancellationToken cancellationToken)
+    {
+        var ids = hackathonIds.ToList();
+        return await dbContext.Participations.AsNoTracking()
+            .Where(item => ids.Contains(item.HackathonId) && item.LeftAt == null)
+            .GroupBy(item => item.HackathonId)
+            .Select(group => new { group.Key, Count = group.Count() })
+            .ToDictionaryAsync(item => item.Key, item => item.Count, cancellationToken);
+    }
+
+    private Task<int> CountParticipantsAsync(Guid hackathonId, CancellationToken cancellationToken) =>
+        dbContext.Participations.CountAsync(item => item.HackathonId == hackathonId && item.LeftAt == null, cancellationToken);
+
+    private static HackathonResponseDto ToDto(Hackathon hackathon, DateTime now, int participants)
     {
         var phase = HackathonPhases.GetPhase(hackathon, now);
         return new HackathonResponseDto(
@@ -357,7 +373,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             hackathon.CreatedAt,
             hackathon.EndsAt,
             phase is HackathonPhase.Published or HackathonPhase.Active,
-            "0 pessoas já entraram",
+            participants == 1 ? "1 pessoa já entrou" : $"{participants} pessoas já entraram",
             HackathonPhases.ToText(phase),
             hackathon.StartsAt,
             hackathon.ReviewEndsAt,

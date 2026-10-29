@@ -705,4 +705,72 @@ public sealed class ParticipationServiceTests
         Assert.Equal(1, item.Membros);
         Assert.Equal(4, item.Vagas);
     }
+
+    [Fact]
+    public async Task GetMine_ListsTeamWithMembersInvitesAndRequests()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        await InviteAsync(ana, team, "bruno@exemplo.com");
+        await RequestAsync(carla, team);
+
+        var mine = await _service.GetMineAsync(ana.Id, CancellationToken.None);
+        var invited = await _service.GetMineAsync(bruno.Id, CancellationToken.None);
+        var requester = await _service.GetMineAsync(carla.Id, CancellationToken.None);
+
+        var participation = Assert.Single(mine.Inscricoes);
+        Assert.Equal("Equipe", participation.Formato);
+        Assert.Equal(["Ana Souza"], participation.Equipe!.Membros.Select(item => item.Nome));
+        Assert.Equal("bruno@exemplo.com", Assert.Single(participation.Equipe.ConvitesPendentes).Email);
+        Assert.Equal("Carla Dias", Assert.Single(participation.Equipe.PedidosPendentes).Nome);
+        var received = Assert.Single(invited.ConvitesRecebidos);
+        Assert.Equal("Os Rápidos", received.Equipe);
+        Assert.Equal("Ana Souza", received.ConvidadoPor);
+        Assert.Empty(invited.Inscricoes);
+        Assert.Equal("Os Rápidos", Assert.Single(requester.PedidosEnviados).Equipe);
+    }
+
+    [Fact]
+    public async Task GetMine_HidesExpiredInvitations()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon);
+        await InviteAsync(ana, team, "bruno@exemplo.com");
+        _dbContext.TeamInvitations.Single().ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
+        await _dbContext.SaveChangesAsync();
+
+        var invited = await _service.GetMineAsync(bruno.Id, CancellationToken.None);
+        var mine = await _service.GetMineAsync(ana.Id, CancellationToken.None);
+
+        Assert.Empty(invited.ConvitesRecebidos);
+        Assert.Empty(mine.Inscricoes.Single().Equipe!.ConvitesPendentes);
+    }
+
+    [Fact]
+    public async Task GetMine_CancelledHackathon_StillListed()
+    {
+        var (hackathon, ana) = await IndividualAsync();
+        await _service.RegisterAsync(ana.Id, hackathon.Id, CancellationToken.None);
+        hackathon.Status = HackathonStatus.Cancelled;
+        await _dbContext.SaveChangesAsync();
+
+        var mine = await _service.GetMineAsync(ana.Id, CancellationToken.None);
+
+        var participation = Assert.Single(mine.Inscricoes);
+        Assert.Equal("Cancelado", participation.Fase);
+        Assert.Null(participation.Equipe);
+    }
+
+    [Fact]
+    public async Task GetMine_IgnoresLeftParticipations()
+    {
+        var (hackathon, ana) = await IndividualAsync();
+        await _service.RegisterAsync(ana.Id, hackathon.Id, CancellationToken.None);
+        await _service.CancelRegistrationAsync(ana.Id, hackathon.Id, CancellationToken.None);
+
+        var mine = await _service.GetMineAsync(ana.Id, CancellationToken.None);
+
+        Assert.Empty(mine.Inscricoes);
+    }
 }
