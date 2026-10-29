@@ -8,10 +8,15 @@ namespace DampCode_API.Tests;
 
 public sealed class ParticipationServiceTests
 {
-    private readonly DampCodeDbContext _dbContext = TestDb.Create();
+    private readonly string _databaseName = Guid.NewGuid().ToString();
+    private readonly DampCodeDbContext _dbContext;
     private readonly ParticipationService _service;
 
-    public ParticipationServiceTests() => _service = new ParticipationService(_dbContext, new CompanyAccessService(_dbContext));
+    public ParticipationServiceTests()
+    {
+        _dbContext = TestDb.CreateShared(_databaseName);
+        _service = new ParticipationService(_dbContext, new CompanyAccessService(_dbContext));
+    }
 
     private Task<Company> OrganizerAsync(string email = "empresa@exemplo.com") =>
         CompanySeed.CompanyAsync(_dbContext, email, CompanyVerificationStatus.Verified);
@@ -477,5 +482,227 @@ public sealed class ParticipationServiceTests
 
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(TeamInvitationStatus.Declined, _dbContext.TeamInvitations.Single().Status);
+    }
+
+    private async Task<TeamJoinRequestSentDto> RequestAsync(Account requester, MyTeamDto team)
+    {
+        var result = await _service.RequestToJoinAsync(requester.Id, team.TeamId, CancellationToken.None);
+        Assert.True(result.Succeeded, result.Message);
+        return result.Value!;
+    }
+
+    [Fact]
+    public async Task RequestToJoin_OpenTeam_CreatesPending()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+
+        var request = await RequestAsync(bruno, team);
+
+        Assert.Equal("Os Rápidos", request.Equipe);
+        Assert.Equal(TeamJoinRequestStatus.Pending, _dbContext.TeamJoinRequests.Single().Status);
+    }
+
+    [Fact]
+    public async Task RequestToJoin_ClosedTeam_ReturnsConflict()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon);
+
+        var result = await _service.RequestToJoinAsync(bruno.Id, team.TeamId, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.Conflict, result.Error);
+        Assert.Equal("Esta equipe não está aceitando pedidos.", result.Message);
+    }
+
+    [Fact]
+    public async Task RequestToJoin_Twice_ReturnsConflict()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        await RequestAsync(bruno, team);
+
+        var result = await _service.RequestToJoinAsync(bruno.Id, team.TeamId, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.Conflict, result.Error);
+        Assert.Equal("Você já pediu para entrar nesta equipe.", result.Message);
+    }
+
+    [Fact]
+    public async Task RequestToJoin_AlreadyRegistered_ReturnsConflict()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        await CreateTeamAsync(bruno, hackathon, "Equipe do Bruno");
+
+        var result = await _service.RequestToJoinAsync(bruno.Id, team.TeamId, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.Conflict, result.Error);
+        Assert.Equal("Você já está inscrito neste Hackathon.", result.Message);
+    }
+
+    [Fact]
+    public async Task AcceptRequest_ByAnyMember_JoinsTeam()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        var toBruno = await InviteAsync(ana, team, "bruno@exemplo.com");
+        await _service.AcceptInvitationAsync(bruno.Id, toBruno.Id, CancellationToken.None);
+        var request = await RequestAsync(carla, team);
+
+        var result = await _service.AcceptRequestAsync(bruno.Id, request.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("Carla Dias", result.Value!.Nome);
+        var stored = _dbContext.TeamJoinRequests.Single();
+        Assert.Equal(TeamJoinRequestStatus.Accepted, stored.Status);
+        Assert.Equal(bruno.Id, stored.RespondedByAccountId);
+        Assert.Equal(3, _dbContext.HackathonTeams.Single().MemberCount);
+    }
+
+    [Fact]
+    public async Task AcceptRequest_ByNonMember_ReturnsNotFound()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com");
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        var request = await RequestAsync(bruno, team);
+
+        var result = await _service.AcceptRequestAsync(carla.Id, request.Id, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.NotFound, result.Error);
+        Assert.Equal("Pedido não encontrado.", result.Message);
+    }
+
+    [Fact]
+    public async Task AcceptRequest_FullTeam_ReturnsConflict()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        var request = await RequestAsync(bruno, team);
+        // completa a equipe sem passar pelo serviço, então o pedido continua pendente
+        await FillTeamAsync(team, hackathon, 5);
+
+        var result = await _service.AcceptRequestAsync(ana.Id, request.Id, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.Conflict, result.Error);
+        Assert.Equal("Esta equipe já está completa.", result.Message);
+    }
+
+    [Fact]
+    public async Task AcceptRequest_TeamChangedConcurrently_ReturnsConflict()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        var request = await RequestAsync(bruno, team);
+        await FillTeamAsync(team, hackathon, 4);
+        // o contexto do serviço já tem a equipe rastreada com 4 membros...
+        Assert.Equal(4, _dbContext.HackathonTeams.Find(team.TeamId)!.MemberCount);
+        // ...e outra requisição ocupa a última vaga antes do aceite
+        await using (var other = TestDb.CreateShared(_databaseName))
+        {
+            other.HackathonTeams.Single(item => item.Id == team.TeamId).MemberCount = 5;
+            await other.SaveChangesAsync();
+        }
+
+        var result = await _service.AcceptRequestAsync(ana.Id, request.Id, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.Conflict, result.Error);
+        Assert.Equal("Esta equipe já está completa.", result.Message);
+    }
+
+    [Fact]
+    public async Task CancelRequest_ByRequester_Cancels()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        var request = await RequestAsync(bruno, team);
+
+        var result = await _service.CancelRequestAsync(bruno.Id, request.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(TeamJoinRequestStatus.Cancelled, _dbContext.TeamJoinRequests.Single().Status);
+    }
+
+    [Fact]
+    public async Task DeclineRequest_SetsDeclined()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon, open: true);
+        var request = await RequestAsync(bruno, team);
+
+        var result = await _service.DeclineRequestAsync(ana.Id, request.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var stored = _dbContext.TeamJoinRequests.Single();
+        Assert.Equal(TeamJoinRequestStatus.Declined, stored.Status);
+        Assert.Equal(ana.Id, stored.RespondedByAccountId);
+    }
+
+    [Fact]
+    public async Task Leave_Member_TeamContinues()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon);
+        var invitation = await InviteAsync(ana, team, "bruno@exemplo.com");
+        await _service.AcceptInvitationAsync(bruno.Id, invitation.Id, CancellationToken.None);
+
+        var result = await _service.LeaveTeamAsync(ana.Id, team.TeamId, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var stored = _dbContext.HackathonTeams.Single();
+        Assert.Equal(1, stored.MemberCount);
+        Assert.NotNull(_dbContext.Participations.Single(item => item.AccountId == ana.Id).LeftAt);
+    }
+
+    [Fact]
+    public async Task Leave_LastMember_DissolvesTeam()
+    {
+        var (hackathon, ana, _) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon);
+        await InviteAsync(ana, team, "bruno@exemplo.com");
+
+        var result = await _service.LeaveTeamAsync(ana.Id, team.TeamId, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.False(_dbContext.HackathonTeams.Any());
+        Assert.False(_dbContext.TeamInvitations.Any());
+        var participation = _dbContext.Participations.Single();
+        Assert.Null(participation.TeamId);
+        Assert.NotNull(participation.LeftAt);
+    }
+
+    [Fact]
+    public async Task Leave_ActivePhase_ReturnsConflict()
+    {
+        var (hackathon, ana, _) = await TeamHackathonAsync();
+        var team = await CreateTeamAsync(ana, hackathon);
+        hackathon.StartsAt = DateTime.UtcNow.AddMinutes(-1);
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _service.LeaveTeamAsync(ana.Id, team.TeamId, CancellationToken.None);
+
+        Assert.Equal(ParticipationServiceError.Conflict, result.Error);
+        Assert.Equal("As inscrições deste Hackathon estão encerradas.", result.Message);
+    }
+
+    [Fact]
+    public async Task GetOpenTeams_ListsOnlyOpenWithVacancies()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com");
+        var open = await CreateTeamAsync(ana, hackathon, "Aberta", open: true);
+        await CreateTeamAsync(bruno, hackathon, "Fechada");
+        var full = await CreateTeamAsync(carla, hackathon, "Cheia", open: true);
+        await FillTeamAsync(full, hackathon, 5);
+
+        var result = await _service.GetOpenTeamsAsync(hackathon.Id, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var item = Assert.Single(result.Value!);
+        Assert.Equal(open.TeamId, item.TeamId);
+        Assert.Equal(1, item.Membros);
+        Assert.Equal(4, item.Vagas);
     }
 }

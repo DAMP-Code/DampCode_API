@@ -12,6 +12,13 @@ public interface IParticipationService
     Task<ParticipationServiceResult<bool>> RevokeInvitationAsync(Guid accountId, Guid teamId, Guid invitationId, CancellationToken cancellationToken);
     Task<ParticipationServiceResult<MyParticipationDto>> AcceptInvitationAsync(Guid accountId, Guid invitationId, CancellationToken cancellationToken);
     Task<ParticipationServiceResult<bool>> DeclineInvitationAsync(Guid accountId, Guid invitationId, CancellationToken cancellationToken);
+    Task<ParticipationServiceResult<TeamJoinRequestSentDto>> RequestToJoinAsync(Guid accountId, Guid teamId, CancellationToken cancellationToken);
+    Task<ParticipationServiceResult<bool>> CancelRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken);
+    // accountId é o integrante da equipe que responde ao pedido.
+    Task<ParticipationServiceResult<TeamMemberDto>> AcceptRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken);
+    Task<ParticipationServiceResult<bool>> DeclineRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken);
+    Task<ParticipationServiceResult<bool>> LeaveTeamAsync(Guid accountId, Guid teamId, CancellationToken cancellationToken);
+    Task<ParticipationServiceResult<IReadOnlyList<OpenTeamDto>>> GetOpenTeamsAsync(Guid hackathonId, CancellationToken cancellationToken);
 }
 
 public sealed record ParticipationServiceResult<T>(bool Succeeded, T? Value = default, ParticipationServiceError Error = ParticipationServiceError.None, string? Message = null);

@@ -13,6 +13,8 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
     private const string FullTeamMessage = "Esta equipe já está completa.";
     private const string InvitationNotFoundMessage = "Convite não encontrado.";
     private const string InvitationAnsweredMessage = "Este convite já foi respondido.";
+    private const string RequestNotFoundMessage = "Pedido não encontrado.";
+    private const string RequestAnsweredMessage = "Este pedido já foi respondido.";
     private const int MaxTeamSize = 5;
     private static readonly TimeSpan InvitationLifetime = TimeSpan.FromHours(24);
 
@@ -176,6 +178,120 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
         invitation.RespondedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(true, true);
+    }
+
+    public async Task<ParticipationServiceResult<TeamJoinRequestSentDto>> RequestToJoinAsync(Guid accountId, Guid teamId, CancellationToken cancellationToken)
+    {
+        var team = await dbContext.HackathonTeams.AsNoTracking().SingleOrDefaultAsync(item => item.Id == teamId, cancellationToken);
+        if (team is null) return Fail<TeamJoinRequestSentDto>(ParticipationServiceError.NotFound, "Equipe não encontrada.");
+        var (_, hackathon, failure) = await CheckCanJoinAsync<TeamJoinRequestSentDto>(accountId, team.HackathonId, AlreadyRegisteredMessage, cancellationToken);
+        if (failure is not null) return failure;
+        if (!team.IsOpen) return Fail<TeamJoinRequestSentDto>(ParticipationServiceError.Conflict, "Esta equipe não está aceitando pedidos.");
+        if (team.MemberCount >= MaxTeamSize) return Fail<TeamJoinRequestSentDto>(ParticipationServiceError.Conflict, FullTeamMessage);
+        if (await dbContext.TeamJoinRequests.AnyAsync(item => item.TeamId == teamId && item.AccountId == accountId && item.Status == TeamJoinRequestStatus.Pending, cancellationToken))
+            return Fail<TeamJoinRequestSentDto>(ParticipationServiceError.Conflict, "Você já pediu para entrar nesta equipe.");
+
+        var request = new TeamJoinRequest { TeamId = teamId, AccountId = accountId };
+        dbContext.TeamJoinRequests.Add(request);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, new TeamJoinRequestSentDto(request.Id, team.Id, team.Name, hackathon!.Id, hackathon.Title));
+    }
+
+    public async Task<ParticipationServiceResult<bool>> CancelRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken)
+    {
+        var request = await dbContext.TeamJoinRequests.SingleOrDefaultAsync(item => item.Id == requestId && item.AccountId == accountId, cancellationToken);
+        if (request is null) return Fail<bool>(ParticipationServiceError.NotFound, RequestNotFoundMessage);
+        if (request.Status != TeamJoinRequestStatus.Pending) return Fail<bool>(ParticipationServiceError.Conflict, RequestAnsweredMessage);
+
+        request.Status = TeamJoinRequestStatus.Cancelled;
+        request.RespondedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, true);
+    }
+
+    public async Task<ParticipationServiceResult<TeamMemberDto>> AcceptRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken)
+    {
+        var (request, requestFailure) = await FindTeamRequestAsync<TeamMemberDto>(accountId, requestId, cancellationToken);
+        if (request is null) return requestFailure!;
+        var (requester, _, failure) = await CheckCanJoinAsync<TeamMemberDto>(request.AccountId, request.Team.HackathonId, AlreadyRegisteredMessage, cancellationToken);
+        if (failure is not null) return failure;
+
+        request.Status = TeamJoinRequestStatus.Accepted;
+        request.RespondedByAccountId = accountId;
+        request.RespondedAt = DateTime.UtcNow;
+        if (await JoinTeamAsync<TeamMemberDto>(requester!, request.Team, cancellationToken) is { } joinFailure) return joinFailure;
+        return new(true, new TeamMemberDto(requester!.Id, requester.UserProfile?.Name ?? requester.Email));
+    }
+
+    public async Task<ParticipationServiceResult<bool>> DeclineRequestAsync(Guid accountId, Guid requestId, CancellationToken cancellationToken)
+    {
+        var (request, failure) = await FindTeamRequestAsync<bool>(accountId, requestId, cancellationToken);
+        if (request is null) return failure!;
+
+        request.Status = TeamJoinRequestStatus.Declined;
+        request.RespondedByAccountId = accountId;
+        request.RespondedAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new(true, true);
+    }
+
+    public async Task<ParticipationServiceResult<bool>> LeaveTeamAsync(Guid accountId, Guid teamId, CancellationToken cancellationToken)
+    {
+        var (team, failure) = await FindMemberTeamAsync<bool>(accountId, teamId, cancellationToken);
+        if (team is null) return failure!;
+
+        var now = DateTime.UtcNow;
+        var participation = await dbContext.Participations
+            .SingleAsync(item => item.TeamId == teamId && item.AccountId == accountId && item.LeftAt == null, cancellationToken);
+        participation.LeftAt = now;
+        team.MemberCount--;
+        if (team.MemberCount == 0)
+        {
+            // Último a sair desfaz a equipe; o histórico de participações fica, sem apontar para ela.
+            foreach (var past in await dbContext.Participations.Where(item => item.TeamId == teamId).ToListAsync(cancellationToken))
+                past.TeamId = null;
+            participation.TeamId = null;
+            dbContext.TeamInvitations.RemoveRange(await dbContext.TeamInvitations.Where(item => item.TeamId == teamId).ToListAsync(cancellationToken));
+            dbContext.TeamJoinRequests.RemoveRange(await dbContext.TeamJoinRequests.Where(item => item.TeamId == teamId).ToListAsync(cancellationToken));
+            dbContext.HackathonTeams.Remove(team);
+        }
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Fail<bool>(ParticipationServiceError.Conflict, "A equipe mudou enquanto você saía. Tente novamente.");
+        }
+        return new(true, true);
+    }
+
+    public async Task<ParticipationServiceResult<IReadOnlyList<OpenTeamDto>>> GetOpenTeamsAsync(Guid hackathonId, CancellationToken cancellationToken)
+    {
+        var hackathon = await dbContext.Hackathons.AsNoTracking().SingleOrDefaultAsync(item => item.Id == hackathonId, cancellationToken);
+        if (hackathon is null || HackathonPhases.GetPhase(hackathon, DateTime.UtcNow) is HackathonPhase.Draft or HackathonPhase.Cancelled)
+            return Fail<IReadOnlyList<OpenTeamDto>>(ParticipationServiceError.NotFound, NotFoundMessage);
+
+        var teams = await dbContext.HackathonTeams.AsNoTracking()
+            .Where(item => item.HackathonId == hackathonId && item.IsOpen && item.MemberCount < MaxTeamSize)
+            .OrderBy(item => item.Name)
+            .Select(item => new OpenTeamDto(item.Id, item.Name, item.MemberCount, MaxTeamSize - item.MemberCount))
+            .ToListAsync(cancellationToken);
+        return new(true, teams);
+    }
+
+    // Pedido pendente de uma equipe em que quem responde é integrante, com o Hackathon ainda aceitando mudanças.
+    private async Task<(TeamJoinRequest? Request, ParticipationServiceResult<T>? Failure)> FindTeamRequestAsync<T>(
+        Guid accountId, Guid requestId, CancellationToken cancellationToken)
+    {
+        var request = await dbContext.TeamJoinRequests.Include(item => item.Team).ThenInclude(item => item.Hackathon)
+            .SingleOrDefaultAsync(item => item.Id == requestId
+                && item.Team.Members.Any(member => member.AccountId == accountId && member.LeftAt == null), cancellationToken);
+        if (request is null) return (null, Fail<T>(ParticipationServiceError.NotFound, RequestNotFoundMessage));
+        if (request.Status != TeamJoinRequestStatus.Pending) return (null, Fail<T>(ParticipationServiceError.Conflict, RequestAnsweredMessage));
+        if (HackathonPhases.GetPhase(request.Team.Hackathon, DateTime.UtcNow) != HackathonPhase.Published)
+            return (null, Fail<T>(ParticipationServiceError.Conflict, ClosedMessage));
+        return (request, null);
     }
 
     // Convite pendente e válido endereçado ao e-mail da conta.
