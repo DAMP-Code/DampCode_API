@@ -32,6 +32,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddSingleton<MongoDbService>();
+builder.Services.AddSingleton<ISubmissionVersionStore, MongoSubmissionVersionStore>();
 builder.Services.AddDbContext<DampCodeDbContext>((serviceProvider, options) =>
 {
     var configuration = serviceProvider.GetRequiredService<IConfiguration>();

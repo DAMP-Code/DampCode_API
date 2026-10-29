@@ -36,4 +36,18 @@ public sealed class SubmissionServiceTests
         Assert.Null(saved.ParticipationId);
         Assert.Null(saved.StageId);
     }
+
+    [Fact]
+    public async Task InMemoryStore_RoundTrip()
+    {
+        var store = new InMemorySubmissionVersionStore();
+
+        var id = await store.InsertAsync(Guid.NewGuid(), "print('oi')", CancellationToken.None);
+        var code = await store.GetCodeAsync(id, CancellationToken.None);
+        await store.DeleteAsync(id, CancellationToken.None);
+
+        Assert.Equal(24, id.Length);
+        Assert.Equal("print('oi')", code);
+        Assert.Null(await store.GetCodeAsync(id, CancellationToken.None));
+    }
 }
