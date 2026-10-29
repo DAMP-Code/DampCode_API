@@ -101,6 +101,14 @@ public sealed class CompanyService(DampCodeDbContext dbContext, ICompanyAccessSe
             return Fail<CompanyAccessDto>(CompanyServiceError.Conflict, "Você já está vinculado a uma empresa.");
 
         var now = DateTime.UtcNow;
+        // Quem organiza não participa: inscrito em Hackathon ainda em andamento desta empresa não vira funcionário dela.
+        var companyHackathons = await dbContext.Participations.AsNoTracking()
+            .Where(item => item.AccountId == account.Id && item.LeftAt == null && item.Hackathon.CompanyId == invitation!.CompanyId)
+            .Select(item => item.Hackathon)
+            .ToListAsync(cancellationToken);
+        if (companyHackathons.Any(item => HackathonPhases.GetPhase(item, now) is not (HackathonPhase.Closed or HackathonPhase.Cancelled)))
+            return Fail<CompanyAccessDto>(CompanyServiceError.Conflict, "Você está inscrito em um Hackathon desta empresa. Saia da inscrição antes de aceitar.");
+
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         dbContext.CompanyMemberships.Add(new CompanyMembership
         {
@@ -111,6 +119,23 @@ public sealed class CompanyService(DampCodeDbContext dbContext, ICompanyAccessSe
         });
         invitation.Status = CompanyInvitationStatus.Accepted;
         invitation.RespondedAt = now;
+        // Funcionário não participa dos Hackathons da empresa: convites e pedidos de equipe neles não teriam como ser aceitos.
+        foreach (var teamInvitation in await dbContext.TeamInvitations
+                     .Where(item => item.NormalizedEmail == account.NormalizedEmail && item.Status == TeamInvitationStatus.Pending
+                         && item.Team.Hackathon.CompanyId == invitation.CompanyId)
+                     .ToListAsync(cancellationToken))
+        {
+            teamInvitation.Status = TeamInvitationStatus.Cancelled;
+            teamInvitation.RespondedAt = now;
+        }
+        foreach (var request in await dbContext.TeamJoinRequests
+                     .Where(item => item.AccountId == account.Id && item.Status == TeamJoinRequestStatus.Pending
+                         && item.Team.Hackathon.CompanyId == invitation.CompanyId)
+                     .ToListAsync(cancellationToken))
+        {
+            request.Status = TeamJoinRequestStatus.Cancelled;
+            request.RespondedAt = now;
+        }
         try
         {
             await dbContext.SaveChangesAsync(cancellationToken);

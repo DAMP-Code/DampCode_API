@@ -11,7 +11,8 @@ namespace DampCode_API.Controllers;
 [Authorize]
 [Route("api/[controller]")]
 [ApiController]
-public sealed class HackathonsController(IHackathonService hackathonService) : ControllerBase
+public sealed class HackathonsController(IHackathonService hackathonService, IParticipationService participationService,
+    ISubmissionService submissionService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
@@ -73,6 +74,74 @@ public sealed class HackathonsController(IHackathonService hackathonService) : C
             ? ToActionResult(await hackathonService.CloseAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
             : Unauthorized();
 
+    [HttpPost("{id:guid}/inscricao")]
+    public async Task<IActionResult> RegisterParticipant(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await participationService.RegisterAsync(accountId, id, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
+    [HttpDelete("{id:guid}/inscricao")]
+    public async Task<IActionResult> CancelParticipant(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await participationService.CancelRegistrationAsync(accountId, id, cancellationToken), StatusCodes.Status204NoContent)
+            : Unauthorized();
+
+    // Equipes abertas com vaga, para quem quer pedir para entrar.
+    [AllowAnonymous]
+    [HttpGet("{id:guid}/equipes")]
+    public async Task<IActionResult> GetOpenTeams(Guid id, CancellationToken cancellationToken) =>
+        ToActionResult(await participationService.GetOpenTeamsAsync(id, cancellationToken), StatusCodes.Status200OK);
+
+    [HttpPost("{id:guid}/equipes")]
+    public async Task<IActionResult> CreateTeam(Guid id, [FromBody] CreateTeamDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await participationService.CreateTeamAsync(accountId, id, dto, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
+    // Entrega de código de quem está inscrito (individual ou equipe).
+    [HttpGet("{id:guid}/entrega")]
+    public async Task<IActionResult> GetMySubmission(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.GetMineAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpGet("{id:guid}/entrega/versoes/{versao:int}")]
+    public async Task<IActionResult> GetMySubmissionVersion(Guid id, int versao, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.GetMyVersionAsync(accountId, id, versao, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpPost("{id:guid}/entrega")]
+    public async Task<IActionResult> SubmitCode(Guid id, [FromBody] SubmitCodeDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.SubmitAsync(accountId, id, dto, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
+    // Visão da empresa: entregas, versões e a solução de referência.
+    [HttpGet("{id:guid}/entregas")]
+    public async Task<IActionResult> GetSubmissions(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.GetEntriesAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpGet("{id:guid}/entregas/{submissionId:guid}")]
+    public async Task<IActionResult> GetSubmission(Guid id, Guid submissionId, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.GetEntryAsync(accountId, id, submissionId, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpGet("{id:guid}/entregas/{submissionId:guid}/versoes/{versao:int}")]
+    public async Task<IActionResult> GetSubmissionVersion(Guid id, Guid submissionId, int versao, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.GetEntryVersionAsync(accountId, id, submissionId, versao, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpGet("{id:guid}/referencia")]
+    public async Task<IActionResult> GetReferenceSolution(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await submissionService.GetReferenceAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
     private bool TryGetAccountId(out Guid accountId) =>
         Guid.TryParse(User.FindFirstValue(JwtRegisteredClaimNames.Sub), out accountId);
 
@@ -87,6 +156,36 @@ public sealed class HackathonsController(IHackathonService hackathonService) : C
             HackathonServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
             HackathonServiceError.Conflict => Conflict(problem),
             HackathonServiceError.Validation => BadRequest(problem),
+            _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
+        };
+    }
+
+    private IActionResult ToActionResult<T>(SubmissionServiceResult<T> result, int successStatusCode)
+    {
+        if (result.Succeeded) return StatusCode(successStatusCode, result.Value);
+        var problem = new ProblemDetails { Detail = result.Message };
+        return result.Error switch
+        {
+            SubmissionServiceError.NotFound => NotFound(problem),
+            SubmissionServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
+            SubmissionServiceError.Conflict => Conflict(problem),
+            SubmissionServiceError.Validation => BadRequest(problem),
+            _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
+        };
+    }
+
+    private IActionResult ToActionResult<T>(ParticipationServiceResult<T> result, int successStatusCode)
+    {
+        if (result.Succeeded)
+            return successStatusCode == StatusCodes.Status204NoContent ? NoContent() : StatusCode(successStatusCode, result.Value);
+        var problem = new ProblemDetails { Detail = result.Message };
+        return result.Error switch
+        {
+            ParticipationServiceError.NotFound => NotFound(problem),
+            ParticipationServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
+            ParticipationServiceError.Conflict => Conflict(problem),
+            ParticipationServiceError.Expired => StatusCode(StatusCodes.Status410Gone, problem),
+            ParticipationServiceError.Validation => BadRequest(problem),
             _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
         };
     }

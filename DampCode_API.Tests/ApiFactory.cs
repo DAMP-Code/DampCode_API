@@ -28,6 +28,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<DbContextOptions<DampCodeDbContext>>();
             services.AddDbContext<DampCodeDbContext>(options => TestDb.Configure(options, _databaseName));
+            // O código das versões fica em memória: os testes não dependem de um MongoDB rodando.
+            services.RemoveAll<ISubmissionVersionStore>();
+            services.AddSingleton<ISubmissionVersionStore, InMemorySubmissionVersionStore>();
         });
     }
 }

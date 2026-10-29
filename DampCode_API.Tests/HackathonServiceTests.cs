@@ -704,4 +704,119 @@ public sealed class HackathonServiceTests
         Assert.True(result.Succeeded, result.Message);
         Assert.Equal(created.HackathonId, result.Value!.HackathonId);
     }
+
+    [Fact]
+    public async Task Update_Published_SavesReference()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        var dto = CompleteDto();
+        dto.Titulo = "Título que não pode mudar";
+        dto.LinguagemReferencia = "Python";
+        dto.SolucaoReferencia = "def resposta(): pass";
+
+        var result = await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var stored = Stored(published.Id.ToString());
+        Assert.Equal("Publicado", stored.Title);
+        Assert.Equal("Python", stored.ReferenceLanguage);
+        Assert.Equal("def resposta(): pass", stored.ReferenceCode);
+    }
+
+    [Fact]
+    public async Task Update_WithoutReferenceFields_KeepsReference()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        published.ReferenceLanguage = "Python";
+        published.ReferenceCode = "def resposta(): pass";
+        await _dbContext.SaveChangesAsync();
+        var dto = CompleteDto();
+        dto.corPrincipal = "#000000";
+
+        var result = await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        var stored = Stored(published.Id.ToString());
+        Assert.Equal("#000000", stored.PrimaryColor);
+        Assert.Equal("def resposta(): pass", stored.ReferenceCode);
+        Assert.Equal("Python", stored.ReferenceLanguage);
+    }
+
+    [Fact]
+    public async Task Update_EmptyReference_ClearsIt()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var published = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        published.ReferenceLanguage = "Python";
+        published.ReferenceCode = "def resposta(): pass";
+        await _dbContext.SaveChangesAsync();
+        var dto = CompleteDto();
+        dto.SolucaoReferencia = "";
+
+        await _service.UpdateAsync(company.PrimaryAccountId, published.Id, dto, CancellationToken.None);
+
+        var stored = Stored(published.Id.ToString());
+        Assert.Null(stored.ReferenceCode);
+        Assert.Null(stored.ReferenceLanguage);
+    }
+
+    [Fact]
+    public async Task Create_ReferenceOver100Kb_ReturnsValidation()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.LinguagemReferencia = "Python";
+        dto.SolucaoReferencia = new string('a', 102401);
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal("O código deve ter no máximo 100 KB.", result.Message);
+    }
+
+    [Fact]
+    public async Task Create_ReferenceWithoutLanguage_ReturnsValidation()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.SolucaoReferencia = "def resposta(): pass";
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal("Escolha uma linguagem.", result.Message);
+    }
+
+    private async Task AddParticipantsAsync(Hackathon hackathon, int active, int left = 0)
+    {
+        for (var index = 0; index < active + left; index++)
+        {
+            var account = await CompanySeed.ParticipantAsync(_dbContext, $"p{index}-{Guid.NewGuid():N}@exemplo.com");
+            _dbContext.Participations.Add(new Participation
+            {
+                HackathonId = hackathon.Id,
+                AccountId = account.Id,
+                LeftAt = index < active ? null : DateTime.UtcNow
+            });
+        }
+        await _dbContext.SaveChangesAsync();
+    }
+
+    [Theory]
+    [InlineData(0, 0, "0 pessoas já entraram")]
+    [InlineData(1, 0, "1 pessoa já entrou")]
+    [InlineData(2, 1, "2 pessoas já entraram")]
+    public async Task Participants_CountsActiveOnly(int active, int left, string expected)
+    {
+        var company = await VerifiedCompanyAsync();
+        var hackathon = await PublishedAsync(company, DateTime.UtcNow.AddDays(2));
+        await AddParticipantsAsync(hackathon, active, left);
+
+        var byId = await _service.GetByIdAsync(null, hackathon.Id.ToString(), CancellationToken.None);
+        var listed = (await _service.GetPublicAsync(CancellationToken.None)).Single();
+
+        Assert.Equal(expected, byId.Value!.Participantes);
+        Assert.Equal(expected, listed.Participantes);
+    }
 }

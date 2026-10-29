@@ -30,11 +30,17 @@ public sealed class Hackathon
     // Data URL enquanto não existe Object Storage; LogoStorageKey fica reservado para ele.
     public string? Logo { get; set; }
     public string? LogoStorageKey { get; set; }
+    // Solução de referência: só a empresa vê, para comparar com as entregas.
+    public string? ReferenceLanguage { get; set; }
+    public string? ReferenceCode { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? DeletedAt { get; set; }
     public Company Company { get; set; } = null!;
     public ICollection<HackathonTechnology> Technologies { get; set; } = [];
+    public ICollection<HackathonTeam> Teams { get; set; } = [];
+    public ICollection<Participation> Participations { get; set; } = [];
+    public ICollection<Submission> Submissions { get; set; } = [];
 }
 
 public sealed class HackathonTechnology
