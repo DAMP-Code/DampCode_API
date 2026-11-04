@@ -13,7 +13,7 @@ public sealed class HackathonConfiguration : IEntityTypeConfiguration<Hackathon>
             table.HasCheckConstraint("ck_hackathons_status", "status IN ('Draft', 'Scheduled', 'Active', 'InReview', 'Closed', 'Cancelled')");
             table.HasCheckConstraint("ck_hackathons_participation_mode", "participation_mode IN ('Individual', 'Team')");
             table.HasCheckConstraint("ck_hackathons_reward_type", "reward_type IS NULL OR reward_type IN ('Money', 'Interview')");
-            table.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count IN (1, 10, 15, 20, 50, 100)");
+            table.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count BETWEEN 1 AND 10 OR winners_count IN (15, 20, 50, 100)");
             table.HasCheckConstraint("ck_hackathons_dates",
                 "starts_at IS NULL OR ends_at IS NULL OR review_ends_at IS NULL OR (starts_at < ends_at AND ends_at < review_ends_at)");
         });

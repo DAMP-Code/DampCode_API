@@ -11,6 +11,10 @@ namespace DampCode_API.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropCheckConstraint(
+                name: "ck_hackathons_winners_count",
+                table: "hackathons");
+
             migrationBuilder.AddColumn<DateTime>(
                 name: "evaluated_at",
                 table: "submissions",
@@ -96,6 +100,11 @@ namespace DampCode_API.Data.Migrations
                 unique: true,
                 filter: "prize_position IS NOT NULL");
 
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_hackathons_winners_count",
+                table: "hackathons",
+                sql: "winners_count IS NULL OR winners_count BETWEEN 1 AND 10 OR winners_count IN (15, 20, 50, 100)");
+
             migrationBuilder.CreateIndex(
                 name: "ux_hackathon_prizes_position",
                 table: "hackathon_prizes",
@@ -129,6 +138,10 @@ namespace DampCode_API.Data.Migrations
                 name: "ux_submissions_prize_position",
                 table: "submissions");
 
+            migrationBuilder.DropCheckConstraint(
+                name: "ck_hackathons_winners_count",
+                table: "hackathons");
+
             migrationBuilder.DropColumn(
                 name: "evaluated_at",
                 table: "submissions");
@@ -156,6 +169,11 @@ namespace DampCode_API.Data.Migrations
             migrationBuilder.DropColumn(
                 name: "results_published_at",
                 table: "hackathons");
+
+            migrationBuilder.AddCheckConstraint(
+                name: "ck_hackathons_winners_count",
+                table: "hackathons",
+                sql: "winners_count IS NULL OR winners_count IN (1, 10, 15, 20, 50, 100)");
         }
     }
 }

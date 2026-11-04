@@ -485,7 +485,7 @@ namespace DampCode_API.Data.Migrations
 
                             t.HasCheckConstraint("ck_hackathons_status", "status IN ('Draft', 'Scheduled', 'Active', 'InReview', 'Closed', 'Cancelled')");
 
-                            t.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count IN (1, 10, 15, 20, 50, 100)");
+                            t.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count BETWEEN 1 AND 10 OR winners_count IN (15, 20, 50, 100)");
                         });
                 });
 
