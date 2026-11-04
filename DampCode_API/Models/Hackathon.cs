@@ -24,6 +24,7 @@ public sealed class Hackathon
     public DateTime? ScheduledAt { get; set; }
     public DateTime? ClosedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
+    public DateTime? ResultsPublishedAt { get; set; }
     public string? PrimaryColor { get; set; }
     public string? SecondaryColor { get; set; }
     public string? BackgroundColor { get; set; }
@@ -41,6 +42,7 @@ public sealed class Hackathon
     public ICollection<HackathonTeam> Teams { get; set; } = [];
     public ICollection<Participation> Participations { get; set; } = [];
     public ICollection<Submission> Submissions { get; set; } = [];
+    public ICollection<HackathonPrize> Prizes { get; set; } = [];
 }
 
 public sealed class HackathonTechnology

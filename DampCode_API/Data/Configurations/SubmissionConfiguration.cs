@@ -22,18 +22,29 @@ public sealed class SubmissionConfiguration : IEntityTypeConfiguration<Submissio
         builder.Property(item => item.FirstSubmittedAt).HasColumnName("first_submitted_at");
         builder.Property(item => item.LastSubmittedAt).HasColumnName("last_submitted_at");
         builder.Property(item => item.FinalizedAt).HasColumnName("finalized_at");
+        builder.Property(item => item.Score).HasColumnName("score");
+        builder.Property(item => item.Feedback).HasColumnName("feedback").HasMaxLength(1000);
+        builder.Property(item => item.EvaluatedAt).HasColumnName("evaluated_at");
+        builder.Property(item => item.EvaluatedByAccountId).HasColumnName("evaluated_by_account_id");
+        builder.Property(item => item.PrizePosition).HasColumnName("prize_position");
+        builder.Property(item => item.FinalPosition).HasColumnName("final_position");
         builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(item => item.UpdatedAt).HasColumnName("updated_at").IsRequired();
         builder.HasIndex(item => item.ParticipationId).IsUnique().HasFilter("participation_id IS NOT NULL")
             .HasDatabaseName("ux_submissions_participation");
         builder.HasIndex(item => item.TeamId).IsUnique().HasFilter("team_id IS NOT NULL").HasDatabaseName("ux_submissions_team");
         builder.HasIndex(item => item.HackathonId).HasDatabaseName("ix_submissions_hackathon_id");
+        builder.HasIndex(item => new { item.HackathonId, item.PrizePosition }).IsUnique().HasFilter("prize_position IS NOT NULL")
+            .HasDatabaseName("ux_submissions_prize_position");
+        builder.HasIndex(item => item.EvaluatedByAccountId).HasDatabaseName("ix_submissions_evaluated_by_account_id");
         builder.HasOne(item => item.Hackathon).WithMany(hackathon => hackathon.Submissions)
             .HasForeignKey(item => item.HackathonId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_submissions_hackathons");
         builder.HasOne(item => item.Team).WithMany()
             .HasForeignKey(item => item.TeamId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_submissions_hackathon_teams");
         builder.HasOne(item => item.Participation).WithMany()
             .HasForeignKey(item => item.ParticipationId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_submissions_participations");
+        builder.HasOne<Account>().WithMany()
+            .HasForeignKey(item => item.EvaluatedByAccountId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_submissions_evaluated_by_accounts");
     }
 }
 

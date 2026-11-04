@@ -22,7 +22,8 @@ public sealed record MyParticipationDto(
     string Fase,
     string Formato,
     DateTime? DataInicio,
-    MyTeamDto? Equipe);
+    MyTeamDto? Equipe,
+    ParticipationResultDto? Resultado);
 
 public sealed record TeamInvitationReceivedDto(
     Guid Id,
