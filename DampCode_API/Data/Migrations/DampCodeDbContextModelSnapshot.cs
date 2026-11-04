@@ -407,6 +407,10 @@ namespace DampCode_API.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("reference_language");
 
+                    b.Property<DateTime?>("ResultsPublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("results_published_at");
+
                     b.Property<DateTime?>("ReviewEndsAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("review_ends_at");
@@ -483,6 +487,50 @@ namespace DampCode_API.Data.Migrations
 
                             t.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count IN (1, 10, 15, 20, 50, 100)");
                         });
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonPrize", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("HackathonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hackathon_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("RewardType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reward_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_hackathon_prizes");
+
+                    b.HasIndex("HackathonId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ux_hackathon_prizes_position");
+
+                    b.ToTable("hackathon_prizes", (string)null);
                 });
 
             modelBuilder.Entity("DampCode_API.Models.HackathonTeam", b =>
@@ -638,6 +686,23 @@ namespace DampCode_API.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("current_version");
 
+                    b.Property<DateTime?>("EvaluatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("evaluated_at");
+
+                    b.Property<Guid?>("EvaluatedByAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("evaluated_by_account_id");
+
+                    b.Property<string>("Feedback")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("feedback");
+
+                    b.Property<int?>("FinalPosition")
+                        .HasColumnType("integer")
+                        .HasColumnName("final_position");
+
                     b.Property<DateTime?>("FinalizedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("finalized_at");
@@ -657,6 +722,14 @@ namespace DampCode_API.Data.Migrations
                     b.Property<Guid?>("ParticipationId")
                         .HasColumnType("uuid")
                         .HasColumnName("participation_id");
+
+                    b.Property<int?>("PrizePosition")
+                        .HasColumnType("integer")
+                        .HasColumnName("prize_position");
+
+                    b.Property<int?>("Score")
+                        .HasColumnType("integer")
+                        .HasColumnName("score");
 
                     b.Property<Guid?>("StageId")
                         .HasColumnType("uuid")
@@ -679,6 +752,9 @@ namespace DampCode_API.Data.Migrations
                     b.HasKey("Id")
                         .HasName("pk_submissions");
 
+                    b.HasIndex("EvaluatedByAccountId")
+                        .HasDatabaseName("ix_submissions_evaluated_by_account_id");
+
                     b.HasIndex("HackathonId")
                         .HasDatabaseName("ix_submissions_hackathon_id");
 
@@ -691,6 +767,11 @@ namespace DampCode_API.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_submissions_team")
                         .HasFilter("team_id IS NOT NULL");
+
+                    b.HasIndex("HackathonId", "PrizePosition")
+                        .IsUnique()
+                        .HasDatabaseName("ux_submissions_prize_position")
+                        .HasFilter("prize_position IS NOT NULL");
 
                     b.ToTable("submissions", null, t =>
                         {
@@ -1082,6 +1163,18 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.HackathonPrize", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
+                        .WithMany("Prizes")
+                        .HasForeignKey("HackathonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_prizes_hackathons");
+
+                    b.Navigation("Hackathon");
+                });
+
             modelBuilder.Entity("DampCode_API.Models.HackathonTeam", b =>
                 {
                     b.HasOne("DampCode_API.Models.Account", null)
@@ -1153,6 +1246,12 @@ namespace DampCode_API.Data.Migrations
 
             modelBuilder.Entity("DampCode_API.Models.Submission", b =>
                 {
+                    b.HasOne("DampCode_API.Models.Account", null)
+                        .WithMany()
+                        .HasForeignKey("EvaluatedByAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_submissions_evaluated_by_accounts");
+
                     b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
                         .WithMany("Submissions")
                         .HasForeignKey("HackathonId")
@@ -1298,6 +1397,8 @@ namespace DampCode_API.Data.Migrations
             modelBuilder.Entity("DampCode_API.Models.Hackathon", b =>
                 {
                     b.Navigation("Participations");
+
+                    b.Navigation("Prizes");
 
                     b.Navigation("Submissions");
 

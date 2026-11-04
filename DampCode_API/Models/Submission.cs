@@ -28,6 +28,19 @@ public sealed class Submission
 
     public DateTime? FinalizedAt { get; set; }
 
+    // Avaliação da empresa: nota 0-100, comentário, posição do prêmio escolhida e colocação final (publicada).
+    public int? Score { get; set; }
+
+    public string? Feedback { get; set; }
+
+    public DateTime? EvaluatedAt { get; set; }
+
+    public Guid? EvaluatedByAccountId { get; set; }
+
+    public int? PrizePosition { get; set; }
+
+    public int? FinalPosition { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

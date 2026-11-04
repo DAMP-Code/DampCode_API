@@ -37,6 +37,7 @@ public sealed class HackathonConfiguration : IEntityTypeConfiguration<Hackathon>
         builder.Property(item => item.ScheduledAt).HasColumnName("scheduled_at");
         builder.Property(item => item.ClosedAt).HasColumnName("closed_at");
         builder.Property(item => item.CancelledAt).HasColumnName("cancelled_at");
+        builder.Property(item => item.ResultsPublishedAt).HasColumnName("results_published_at");
         builder.Property(item => item.PrimaryColor).HasColumnName("primary_color").HasMaxLength(7);
         builder.Property(item => item.SecondaryColor).HasColumnName("secondary_color").HasMaxLength(7);
         builder.Property(item => item.BackgroundColor).HasColumnName("background_color").HasMaxLength(7);
@@ -55,6 +56,25 @@ public sealed class HackathonConfiguration : IEntityTypeConfiguration<Hackathon>
             .HasForeignKey(item => item.CompanyId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_hackathons_companies");
         builder.HasOne<Account>().WithMany()
             .HasForeignKey(item => item.CreatedByAccountId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_hackathons_accounts");
+    }
+}
+
+public sealed class HackathonPrizeConfiguration : IEntityTypeConfiguration<HackathonPrize>
+{
+    public void Configure(EntityTypeBuilder<HackathonPrize> builder)
+    {
+        builder.ToTable("hackathon_prizes");
+        builder.HasKey(item => item.Id).HasName("pk_hackathon_prizes");
+        builder.Property(item => item.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(item => item.HackathonId).HasColumnName("hackathon_id").IsRequired();
+        builder.Property(item => item.Position).HasColumnName("position").IsRequired();
+        builder.Property(item => item.RewardType).HasColumnName("reward_type").HasConversion<string>().HasMaxLength(32).IsRequired();
+        builder.Property(item => item.Amount).HasColumnName("amount").HasPrecision(12, 2);
+        builder.Property(item => item.Description).HasColumnName("description").HasMaxLength(120);
+        builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.HasIndex(item => new { item.HackathonId, item.Position }).IsUnique().HasDatabaseName("ux_hackathon_prizes_position");
+        builder.HasOne(item => item.Hackathon).WithMany(hackathon => hackathon.Prizes)
+            .HasForeignKey(item => item.HackathonId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_hackathon_prizes_hackathons");
     }
 }
 
