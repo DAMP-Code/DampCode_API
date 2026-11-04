@@ -467,15 +467,19 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
                 _ => null
             },
             hackathon.CompanyId,
-            hackathon.Prizes.OrderBy(prize => prize.Position).Select(prize => new PrizeDto
-            {
-                Posicao = prize.Position,
-                Tipo = prize.RewardType == HackathonRewardType.Money ? "Dinheiro" : "Entrevista",
-                Valor = prize.RewardType == HackathonRewardType.Money ? prize.Amount : null,
-                Descricao = prize.Description
-            }).ToList(),
+            ToPrizeDtos(hackathon.Prizes),
             hackathon.ResultsPublishedAt is not null);
     }
+
+    // Também usado pela avaliação (lista de prêmios do ranking).
+    internal static List<PrizeDto> ToPrizeDtos(IEnumerable<HackathonPrize> prizes) =>
+        prizes.OrderBy(prize => prize.Position).Select(prize => new PrizeDto
+        {
+            Posicao = prize.Position,
+            Tipo = prize.RewardType == HackathonRewardType.Money ? "Dinheiro" : "Entrevista",
+            Valor = prize.RewardType == HackathonRewardType.Money ? prize.Amount : null,
+            Descricao = prize.Description
+        }).ToList();
 
     private static HackathonParticipationMode? ParseParticipationMode(string? value) => Normalize(value ?? "") switch
     {
