@@ -24,4 +24,6 @@ public sealed record HackathonResponseDto(
     DateTime? DataFimAvaliacao,
     string Formato,
     string? TipoPremiacao,
-    Guid CompanyId);
+    Guid CompanyId,
+    IReadOnlyList<PrizeDto> Premios,
+    bool ResultadoPublicado);

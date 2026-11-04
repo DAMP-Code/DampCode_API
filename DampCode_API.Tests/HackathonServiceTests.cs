@@ -471,7 +471,7 @@ public sealed class HackathonServiceTests
 
         Assert.Equal(HackathonServiceError.Validation, result.Error);
         Assert.Equal("Preencha antes de publicar: tecnologias, data de início, fim das submissões, fim da avaliação, "
-            + "tipo de premiação, quantos ganham, método de avaliação.", result.Message);
+            + "premiação, método de avaliação.", result.Message);
     }
 
     [Fact]
@@ -818,5 +818,114 @@ public sealed class HackathonServiceTests
 
         Assert.Equal(expected, byId.Value!.Participantes);
         Assert.Equal(expected, listed.Participantes);
+    }
+
+    private static PrizeDto Prize(int position, string type, decimal? amount = null, string? description = null) =>
+        new() { Posicao = position, Tipo = type, Valor = amount, Descricao = description };
+
+    [Fact]
+    public async Task Create_WithPremios_SyncsLegacyFields()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.Ranking = null;
+        dto.Premiacao = null;
+        dto.TipoPremiacao = null;
+        dto.Premios = [Prize(3, "Entrevista"), Prize(1, "Dinheiro", 1000), Prize(2, "Dinheiro", 500)];
+
+        var created = await CreateAsync(company, dto);
+
+        var stored = Stored(created.HackathonId);
+        Assert.Equal(3, stored.WinnersCount);
+        Assert.Equal(HackathonRewardType.Money, stored.RewardType);
+        Assert.Equal(1000, stored.PrizeAmount);
+        Assert.Equal("Top 3", created.Ranking);
+        Assert.Equal(1000, created.Premiacao);
+        Assert.Equal([1, 2, 3], created.Premios.Select(item => item.Posicao));
+    }
+
+    [Theory]
+    [InlineData("posicoes", "As posições dos prêmios devem ser 1, 2, 3... sem pular.")]
+    [InlineData("muitos", "Defina no máximo 10 prêmios.")]
+    [InlineData("semvalor", "Informe o valor do prêmio do 2º lugar.")]
+    [InlineData("tipo", "Escolha o tipo do prêmio do 1º lugar.")]
+    [InlineData("descricao", "A descrição do prêmio do 1º lugar deve ter no máximo 120 caracteres.")]
+    public async Task Create_PremiosInvalid_ReturnsValidation(string scenario, string message)
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.Premios = scenario switch
+        {
+            "posicoes" => [Prize(1, "Dinheiro", 10), Prize(3, "Dinheiro", 5)],
+            "muitos" => Enumerable.Range(1, 11).Select(position => Prize(position, "Dinheiro", 10)).ToList(),
+            "semvalor" => [Prize(1, "Dinheiro", 10), Prize(2, "Dinheiro")],
+            "tipo" => [Prize(1, "Viagem")],
+            _ => [Prize(1, "Entrevista", null, new string('a', 121))]
+        };
+
+        var result = await _service.CreateAsync(company.PrimaryAccountId, dto, CancellationToken.None);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Equal(message, result.Message);
+    }
+
+    [Fact]
+    public async Task Create_WithoutPremios_CreatesFirstPlaceFromLegacy()
+    {
+        var company = await VerifiedCompanyAsync();
+        var dto = CompleteDto();
+        dto.TipoPremiacao = "Entrevista";
+        dto.Premiacao = null;
+        dto.Ranking = "Top 10";
+
+        var created = await CreateAsync(company, dto);
+
+        var prize = Assert.Single(created.Premios);
+        Assert.Equal(1, prize.Posicao);
+        Assert.Equal("Entrevista", prize.Tipo);
+        Assert.Equal(10, Stored(created.HackathonId).WinnersCount);
+        Assert.True((await PublishAsync(company, created.HackathonId)).Succeeded);
+    }
+
+    [Fact]
+    public async Task Update_AfterPublish_IgnoresPremios()
+    {
+        var company = await VerifiedCompanyAsync();
+        var created = await CreateAsync(company);
+        Assert.True((await PublishAsync(company, created.HackathonId)).Succeeded);
+        var dto = CompleteDto();
+        dto.Premios = [Prize(1, "Dinheiro", 1), Prize(2, "Dinheiro", 1), Prize(3, "Dinheiro", 1)];
+
+        var result = await _service.UpdateAsync(company.PrimaryAccountId, Guid.Parse(created.HackathonId), dto, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Single(result.Value!.Premios);
+        Assert.Equal(1, _dbContext.HackathonPrizes.Count(item => item.HackathonId == Guid.Parse(created.HackathonId)));
+    }
+
+    [Fact]
+    public async Task Publish_WithoutPrizes_ListsMissing()
+    {
+        var company = await VerifiedCompanyAsync();
+        var dto = CompleteDto();
+        dto.TipoPremiacao = null;
+
+        var created = await CreateAsync(company, dto);
+        var result = await PublishAsync(company, created.HackathonId);
+
+        Assert.Equal(HackathonServiceError.Validation, result.Error);
+        Assert.Contains("premiação", result.Message);
+    }
+
+    [Fact]
+    public async Task Response_InterviewPrize_HasNullValue()
+    {
+        var company = await CompanySeed.CompanyAsync(_dbContext);
+        var dto = CompleteDto();
+        dto.Premios = [Prize(1, "Entrevista", 50)];
+
+        var created = await CreateAsync(company, dto);
+
+        Assert.Null(Assert.Single(created.Premios).Valor);
     }
 }
