@@ -15,6 +15,6 @@ public sealed record MySubmissionDto(
 
 public sealed record SubmissionEntryDto(Guid? SubmissionId, string Nome, int? VersaoAtual, DateTime? EnviadoEm);
 
-public sealed record SubmissionDetailDto(Guid SubmissionId, string Nome, IReadOnlyList<SubmissionVersionDto> Versoes, SubmissionCodeDto? Atual);
+public sealed record SubmissionDetailDto(Guid SubmissionId, string Nome, IReadOnlyList<SubmissionVersionDto> Versoes, SubmissionCodeDto? Atual, int? Semelhanca, int? Nota, string? Comentario, bool PodeAvaliar);
 
 public sealed record ReferenceSolutionDto(string? Linguagem, string? Codigo);

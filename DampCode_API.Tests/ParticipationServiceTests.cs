@@ -773,4 +773,114 @@ public sealed class ParticipationServiceTests
 
         Assert.Empty(mine.Inscricoes);
     }
+
+    // Hackathon individual já publicado: Ana em 1o (nota 90, prêmio 1), Bruno em 2o sem prêmio.
+    private async Task<(Hackathon Hackathon, Account Ana, Account Bruno)> PublishedResultAsync(bool publish)
+    {
+        var (hackathon, ana) = await IndividualAsync(DateTime.UtcNow.AddDays(-10));
+        var bruno = await CompanySeed.ParticipantAsync(_dbContext, "bruno@exemplo.com", "Bruno Lima");
+        var tracked = await _dbContext.Hackathons.SingleAsync(item => item.Id == hackathon.Id);
+        tracked.ResultsPublishedAt = publish ? DateTime.UtcNow : null;
+        _dbContext.HackathonPrizes.Add(new HackathonPrize
+        {
+            HackathonId = hackathon.Id, Position = 1, RewardType = HackathonRewardType.Money, Amount = 500m, Description = "Prêmio principal"
+        });
+        var position = 1;
+        foreach (var (account, score) in new[] { (ana, 90), (bruno, 70) })
+        {
+            var participation = new Participation { HackathonId = hackathon.Id, AccountId = account.Id };
+            _dbContext.Participations.Add(participation);
+            _dbContext.Submissions.Add(new Submission
+            {
+                HackathonId = hackathon.Id,
+                ParticipationId = participation.Id,
+                Status = "Submitted",
+                CurrentVersion = 1,
+                Score = score,
+                Feedback = $"Comentário {score}",
+                PrizePosition = position == 1 ? 1 : null,
+                FinalPosition = publish ? position : null
+            });
+            position++;
+        }
+        await _dbContext.SaveChangesAsync();
+        return (hackathon, ana, bruno);
+    }
+
+    [Fact]
+    public async Task Overview_NoResultBeforePublish()
+    {
+        var (_, ana, _) = await PublishedResultAsync(publish: false);
+
+        var mine = await _service.GetMineAsync(ana.Id, CancellationToken.None);
+
+        Assert.Null(Assert.Single(mine.Inscricoes).Resultado);
+    }
+
+    [Fact]
+    public async Task Overview_ResultAfterPublish()
+    {
+        var (_, ana, bruno) = await PublishedResultAsync(publish: true);
+
+        var winner = Assert.Single((await _service.GetMineAsync(ana.Id, CancellationToken.None)).Inscricoes).Resultado!;
+        var other = Assert.Single((await _service.GetMineAsync(bruno.Id, CancellationToken.None)).Inscricoes).Resultado!;
+
+        Assert.Equal(1, winner.Posicao);
+        Assert.Equal(2, winner.TotalClassificados);
+        Assert.Equal(90, winner.Nota);
+        Assert.Equal("Comentário 90", winner.Comentario);
+        Assert.Equal("Dinheiro", winner.Premio!.Tipo);
+        Assert.Equal(500m, winner.Premio.Valor);
+        Assert.Equal("Prêmio principal", winner.Premio.Descricao);
+        Assert.Equal(2, other.Posicao);
+        Assert.Null(other.Premio);
+    }
+
+    [Fact]
+    public async Task Overview_NoSubmission_ResultWithoutPosition()
+    {
+        var (hackathon, ana, _) = await PublishedResultAsync(publish: true);
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        _dbContext.Participations.Add(new Participation { HackathonId = hackathon.Id, AccountId = carla.Id });
+        await _dbContext.SaveChangesAsync();
+
+        var result = Assert.Single((await _service.GetMineAsync(carla.Id, CancellationToken.None)).Inscricoes).Resultado!;
+
+        Assert.Null(result.Posicao);
+        Assert.Null(result.Nota);
+        Assert.Null(result.Premio);
+        Assert.Equal(2, result.TotalClassificados);
+    }
+
+    [Fact]
+    public async Task Overview_TeamResult_SameForActiveMembers()
+    {
+        var (hackathon, ana, bruno) = await TeamHackathonAsync();
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        var tracked = await _dbContext.Hackathons.SingleAsync(item => item.Id == hackathon.Id);
+        tracked.ResultsPublishedAt = DateTime.UtcNow;
+        var team = new HackathonTeam
+        {
+            HackathonId = hackathon.Id, CreatedByAccountId = ana.Id, Name = "Os Rápidos", NormalizedName = "OS RÁPIDOS", MemberCount = 2
+        };
+        _dbContext.HackathonTeams.Add(team);
+        _dbContext.Participations.AddRange(
+            new Participation { HackathonId = hackathon.Id, AccountId = ana.Id, TeamId = team.Id },
+            new Participation { HackathonId = hackathon.Id, AccountId = bruno.Id, TeamId = team.Id },
+            new Participation { HackathonId = hackathon.Id, AccountId = carla.Id, TeamId = team.Id, LeftAt = DateTime.UtcNow.AddDays(-5) });
+        _dbContext.Submissions.Add(new Submission
+        {
+            HackathonId = hackathon.Id, TeamId = team.Id, Status = "Submitted", CurrentVersion = 1, Score = 85, Feedback = "Ótimo", FinalPosition = 1
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var forAna = Assert.Single((await _service.GetMineAsync(ana.Id, CancellationToken.None)).Inscricoes).Resultado!;
+        var forBruno = Assert.Single((await _service.GetMineAsync(bruno.Id, CancellationToken.None)).Inscricoes).Resultado!;
+        var forCarla = await _service.GetMineAsync(carla.Id, CancellationToken.None);
+
+        Assert.Equal(forAna, forBruno);
+        Assert.Equal(1, forAna.Posicao);
+        Assert.Equal(85, forAna.Nota);
+        Assert.Empty(forCarla.Inscricoes);
+    }
 }

@@ -34,3 +34,6 @@ public sealed record EvaluationRankingDto(
     bool ResultadoPublicado,
     IReadOnlyList<PrizeDto> Premios,
     IReadOnlyList<EvaluationEntryDto> Entregas);
+
+// Resultado publicado visto pelo participante; sem entrega, Posicao e Nota ficam nulas.
+public sealed record ParticipationResultDto(int? Posicao, int TotalClassificados, int? Nota, string? Comentario, PrizeDto? Premio);
