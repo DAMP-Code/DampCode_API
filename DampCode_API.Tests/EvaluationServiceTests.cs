@@ -256,6 +256,18 @@ public sealed class EvaluationServiceTests
     }
 
     [Fact]
+    public async Task SetWinners_NullItem_ReturnsValidation()
+    {
+        var (company, hackathon, _) = await ReviewingAsync();
+        var dto = new SetWinnersDto { Vencedores = [null!] };
+
+        var result = await _service.SetWinnersAsync(company.PrimaryAccountId, hackathon.Id, dto, CancellationToken.None);
+
+        Assert.Equal(EvaluationServiceError.Validation, result.Error);
+        Assert.Equal("Escolha um vencedor diferente para cada prêmio.", result.Message);
+    }
+
+    [Fact]
     public async Task SetWinners_SwapPositions_Succeeds()
     {
         var (company, hackathon, submissions) = await ReviewingAsync();

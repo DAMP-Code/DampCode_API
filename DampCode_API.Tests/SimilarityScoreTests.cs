@@ -16,6 +16,10 @@ public sealed class SimilarityScoreTests
             "JavaScript"));
 
     [Fact]
+    public void RenamedToUnicodeIdentifier_Returns100() =>
+        Assert.Equal(100, SimilarityScore.Compute("let soma = a + b;", "let ação = a + b;", "JavaScript"));
+
+    [Fact]
     public void PythonHashComment_Ignored() =>
         Assert.Equal(100, SimilarityScore.Compute(
             "def f(x):\n    return x * 2",

@@ -56,7 +56,7 @@ public sealed class EvaluationService(DampCodeDbContext dbContext, ICompanyAcces
 
         var winners = dto.Vencedores ?? [];
         var positions = hackathon.Prizes.Select(prize => prize.Position).ToHashSet();
-        if (winners.Any(item => !positions.Contains(item.Posicao))
+        if (winners.Any(item => item is null || !positions.Contains(item.Posicao))
             || winners.Select(item => item.Posicao).Distinct().Count() != winners.Count
             || winners.Select(item => item.SubmissionId).Distinct().Count() != winners.Count)
             return Fail<EvaluationRankingDto>(EvaluationServiceError.Validation, WinnersMessage);
@@ -69,7 +69,12 @@ public sealed class EvaluationService(DampCodeDbContext dbContext, ICompanyAcces
         try
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
-            foreach (var submission in submissions) submission.PrizePosition = null;
+            foreach (var submission in submissions)
+            {
+                submission.PrizePosition = null;
+                // força o UPDATE mesmo se já estava nulo, para o último a salvar valer
+                dbContext.Entry(submission).Property(item => item.PrizePosition).IsModified = true;
+            }
             await dbContext.SaveChangesAsync(cancellationToken);
             foreach (var winner in winners) submissions.Single(item => item.Id == winner.SubmissionId).PrizePosition = winner.Posicao;
             await dbContext.SaveChangesAsync(cancellationToken);

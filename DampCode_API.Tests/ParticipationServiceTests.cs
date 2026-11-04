@@ -837,6 +837,27 @@ public sealed class ParticipationServiceTests
     }
 
     [Fact]
+    public async Task Overview_PrizesWithoutWinner_TotalNotBelowPosition()
+    {
+        var (hackathon, _, _) = await PublishedResultAsync(publish: true);
+        var rows = await _dbContext.Submissions.Where(item => item.HackathonId == hackathon.Id).ToListAsync();
+        // 3 prêmios, só o 1º dado: as demais entregas começam na posição 4
+        rows[0].FinalPosition = 1;
+        rows[1].FinalPosition = 4;
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        var diego = await CompanySeed.ParticipantAsync(_dbContext, "diego@exemplo.com", "Diego Alves");
+        var last = new Participation { HackathonId = hackathon.Id, AccountId = diego.Id };
+        _dbContext.Participations.AddRange(new Participation { HackathonId = hackathon.Id, AccountId = carla.Id }, last);
+        _dbContext.Submissions.Add(new Submission { HackathonId = hackathon.Id, ParticipationId = last.Id, Status = "Submitted", CurrentVersion = 1, FinalPosition = 6 });
+        await _dbContext.SaveChangesAsync();
+
+        var result = Assert.Single((await _service.GetMineAsync(diego.Id, CancellationToken.None)).Inscricoes).Resultado!;
+
+        Assert.Equal(6, result.Posicao);
+        Assert.Equal(6, result.TotalClassificados);
+    }
+
+    [Fact]
     public async Task Overview_NoSubmission_ResultWithoutPosition()
     {
         var (hackathon, ana, _) = await PublishedResultAsync(publish: true);

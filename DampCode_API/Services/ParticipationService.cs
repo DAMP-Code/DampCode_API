@@ -488,7 +488,10 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
         var hackathon = participation.Hackathon;
         var submission = await dbContext.Submissions.AsNoTracking().SingleOrDefaultAsync(item => item.HackathonId == hackathon.Id
             && (participation.TeamId != null ? item.TeamId == participation.TeamId : item.ParticipationId == participation.Id), cancellationToken);
-        var total = await dbContext.Submissions.AsNoTracking().CountAsync(item => item.HackathonId == hackathon.Id && item.FinalPosition != null, cancellationToken);
+        var positions = await dbContext.Submissions.AsNoTracking().Where(item => item.HackathonId == hackathon.Id && item.FinalPosition != null)
+            .Select(item => item.FinalPosition!.Value).ToListAsync(cancellationToken);
+        // o total nunca fica abaixo da própria posição (prêmios sem vencedor deixam buracos na classificação)
+        var total = positions.Count == 0 ? 0 : Math.Max(positions.Count, positions.Max());
         var prize = submission?.PrizePosition is { } position
             ? HackathonService.ToPrizeDtos(hackathon.Prizes.Where(item => item.Position == position)).SingleOrDefault()
             : null;

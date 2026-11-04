@@ -49,7 +49,7 @@ public static partial class SimilarityScore
         "CLASS", "NEW", "TRUE", "FALSE", "NULL", "INT", "STRING", "BOOL", "VOID"
     ], StringComparer.OrdinalIgnoreCase);
 
-    [GeneratedRegex(@"[A-Za-z_][A-Za-z0-9_]*|\d+(\.\d+)?|\S")]
+    [GeneratedRegex(@"[\p{L}_][\p{L}\p{N}_]*|\d+(\.\d+)?|\S")]
     private static partial Regex TokenRegex();
 
     public static int Compute(string reference, string code, string language)
