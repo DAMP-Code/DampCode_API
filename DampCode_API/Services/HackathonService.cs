@@ -12,6 +12,8 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
 {
     private const int MaxLogoLength = 2 * 1024 * 1024;
     private const decimal MaxPrizeAmount = 9_999_999_999.99m;
+    private const int MaxPrizes = 10;
+    private const int MaxPrizeDescription = 120;
     private static readonly int[] WinnersCounts = [1, 10, 15, 20, 50, 100];
     private static readonly Regex ColorPattern = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
     private static readonly Regex LogoPattern = new("^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$", RegexOptions.Compiled);
@@ -40,6 +42,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             UpdatedAt = now
         };
         ApplyContent(hackathon, dto);
+        ApplyPrizes(hackathon, dto);
         ApplyVisual(hackathon, dto);
         await SetTechnologiesAsync(hackathon, dto.Tecnologias ?? [], cancellationToken);
         dbContext.Hackathons.Add(hackathon);
@@ -64,6 +67,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
             hackathon.Description = dto.Descricao!.Trim();
             hackathon.Area = dto.Area!.Trim();
             ApplyContent(hackathon, dto);
+            ApplyPrizes(hackathon, dto);
             await SetTechnologiesAsync(hackathon, dto.Tecnologias ?? [], cancellationToken);
         }
         // Depois de publicado, só o visual muda; os campos cruciais que vierem são ignorados.
@@ -193,9 +197,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         if (hackathon.StartsAt is null) missing.Add("data de início");
         if (hackathon.EndsAt is null) missing.Add("fim das submissões");
         if (hackathon.ReviewEndsAt is null) missing.Add("fim da avaliação");
-        if (hackathon.RewardType is null) missing.Add("tipo de premiação");
-        if (hackathon.RewardType == HackathonRewardType.Money && !(hackathon.PrizeAmount > 0)) missing.Add("premiação");
-        if (hackathon.WinnersCount is null) missing.Add("quantos ganham");
+        if (hackathon.Prizes.Count == 0) missing.Add("premiação");
         if (string.IsNullOrWhiteSpace(hackathon.EvaluationMethod)) missing.Add("método de avaliação");
         return missing;
     }
@@ -212,7 +214,8 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
     }
 
     private static IQueryable<Hackathon> WithDetails(IQueryable<Hackathon> query) =>
-        query.Include(item => item.Company).Include(item => item.Technologies).ThenInclude(item => item.Technology);
+        query.Include(item => item.Company).Include(item => item.Prizes)
+            .Include(item => item.Technologies).ThenInclude(item => item.Technology);
 
     private static string? ValidateDraft(CreateHackathonDto dto)
     {
@@ -235,6 +238,7 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         foreach (var (field, value, limit) in limits)
             if (value?.Trim().Length > limit) return $"O campo {field} deve ter no máximo {limit} caracteres.";
         if (dto.Premiacao is < 0 or > MaxPrizeAmount) return "A premiação deve ficar entre 0 e 9.999.999.999,99.";
+        if (ValidatePrizes(dto.Premios) is { } prizesError) return prizesError;
         if (ValidateVisual(dto) is { } visualError) return visualError;
 
         var startsAt = ToUtc(dto.DataInicio);
@@ -242,6 +246,26 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         var reviewEndsAt = ToUtc(dto.DataFimAvaliacao);
         if (startsAt is not null && endsAt is not null && reviewEndsAt is not null && !(startsAt < endsAt && endsAt < reviewEndsAt))
             return DatesOrderMessage;
+        return null;
+    }
+
+    private static string? ValidatePrizes(List<PrizeDto>? prizes)
+    {
+        if (prizes is null || prizes.Count == 0) return null;
+        if (prizes.Count > MaxPrizes) return $"Defina no máximo {MaxPrizes} prêmios.";
+        if (prizes.Any(prize => prize is null) || !prizes.Select(prize => prize.Posicao).Order().SequenceEqual(Enumerable.Range(1, prizes.Count)))
+            return "As posições dos prêmios devem ser 1, 2, 3... sem pular.";
+
+        foreach (var prize in prizes.OrderBy(prize => prize.Posicao))
+        {
+            var type = ParseRewardType(prize.Tipo);
+            if (type is null) return $"Escolha o tipo do prêmio do {prize.Posicao}º lugar.";
+            if (type == HackathonRewardType.Money && !(prize.Valor > 0)) return $"Informe o valor do prêmio do {prize.Posicao}º lugar.";
+            if (type == HackathonRewardType.Money && prize.Valor > MaxPrizeAmount)
+                return $"O valor do prêmio do {prize.Posicao}º lugar deve ficar entre 0,01 e 9.999.999.999,99.";
+            if (prize.Descricao?.Trim().Length > MaxPrizeDescription)
+                return $"A descrição do prêmio do {prize.Posicao}º lugar deve ter no máximo {MaxPrizeDescription} caracteres.";
+        }
         return null;
     }
 
@@ -269,6 +293,56 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
         hackathon.StartsAt = ToUtc(dto.DataInicio);
         hackathon.EndsAt = ToUtc(dto.DataFinal);
         hackathon.ReviewEndsAt = ToUtc(dto.DataFimAvaliacao);
+    }
+
+    // Com lista, ela manda e os campos antigos são derivados do 1º lugar; sem lista, o 1º lugar sai dos campos antigos.
+    // As linhas existentes são reaproveitadas por posição para não bater no índice único.
+    private void ApplyPrizes(Hackathon hackathon, CreateHackathonDto dto)
+    {
+        List<HackathonPrize> prizes;
+        if (dto.Premios is null)
+        {
+            var legacy = hackathon.RewardType is { } type && (type == HackathonRewardType.Interview || hackathon.PrizeAmount > 0)
+                ? new HackathonPrize { Position = 1, RewardType = type, Amount = hackathon.PrizeAmount }
+                : null;
+            prizes = legacy is null ? [] : [legacy];
+        }
+        else
+        {
+            prizes = dto.Premios.OrderBy(prize => prize.Posicao).Select(prize =>
+            {
+                var type = ParseRewardType(prize.Tipo)!.Value;
+                return new HackathonPrize
+                {
+                    Position = prize.Posicao,
+                    RewardType = type,
+                    Amount = type == HackathonRewardType.Money ? prize.Valor : null,
+                    Description = Blank(prize.Descricao)
+                };
+            }).ToList();
+            hackathon.WinnersCount = prizes.Count == 0 ? null : prizes.Count;
+            hackathon.RewardType = prizes.FirstOrDefault()?.RewardType;
+            hackathon.PrizeAmount = prizes.FirstOrDefault()?.Amount;
+        }
+
+        foreach (var old in hackathon.Prizes.Where(old => prizes.All(prize => prize.Position != old.Position)).ToList())
+        {
+            hackathon.Prizes.Remove(old);
+            dbContext.HackathonPrizes.Remove(old);
+        }
+        foreach (var prize in prizes)
+        {
+            var existing = hackathon.Prizes.FirstOrDefault(old => old.Position == prize.Position);
+            if (existing is null)
+            {
+                prize.Hackathon = hackathon;
+                hackathon.Prizes.Add(prize);
+                continue;
+            }
+            existing.RewardType = prize.RewardType;
+            existing.Amount = prize.Amount;
+            existing.Description = prize.Description;
+        }
     }
 
     private static void ApplyVisual(Hackathon hackathon, CreateHackathonDto dto)
@@ -392,8 +466,20 @@ public sealed class HackathonService(DampCodeDbContext dbContext, ICompanyAccess
                 HackathonRewardType.Interview => "Entrevista",
                 _ => null
             },
-            hackathon.CompanyId);
+            hackathon.CompanyId,
+            ToPrizeDtos(hackathon.Prizes),
+            hackathon.ResultsPublishedAt is not null);
     }
+
+    // Também usado pela avaliação (lista de prêmios do ranking).
+    internal static List<PrizeDto> ToPrizeDtos(IEnumerable<HackathonPrize> prizes) =>
+        prizes.OrderBy(prize => prize.Position).Select(prize => new PrizeDto
+        {
+            Posicao = prize.Position,
+            Tipo = prize.RewardType == HackathonRewardType.Money ? "Dinheiro" : "Entrevista",
+            Valor = prize.RewardType == HackathonRewardType.Money ? prize.Amount : null,
+            Descricao = prize.Description
+        }).ToList();
 
     private static HackathonParticipationMode? ParseParticipationMode(string? value) => Normalize(value ?? "") switch
     {

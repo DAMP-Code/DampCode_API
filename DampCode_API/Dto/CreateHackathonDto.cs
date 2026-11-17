@@ -43,5 +43,7 @@
         public string? SolucaoReferencia { get; set; }
 
         public bool status { get; set; }
+
+        public List<PrizeDto>? Premios { get; set; }
     }
 }

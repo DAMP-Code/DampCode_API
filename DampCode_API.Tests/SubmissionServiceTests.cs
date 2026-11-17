@@ -411,4 +411,25 @@ public sealed class SubmissionServiceTests
         Assert.Equal("Python", result.Value!.Linguagem);
         Assert.Equal("def resposta(): pass", result.Value.Codigo);
     }
+
+    [Fact]
+    public async Task GetEntry_IncludesSuggestionAndScore()
+    {
+        var (company, hackathon, ana) = await ActiveIndividualAsync();
+        var tracked = await _dbContext.Hackathons.SingleAsync(item => item.Id == hackathon.Id);
+        tracked.ReferenceLanguage = "Python";
+        tracked.ReferenceCode = "print(1)";
+        await SubmitAsync(ana, hackathon, Code("print(1)"));
+        var submission = _dbContext.Submissions.Single();
+        submission.Score = 80;
+        submission.Feedback = "Boa entrega.";
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _service.GetEntryAsync(company.PrimaryAccountId, hackathon.Id, submission.Id, CancellationToken.None);
+
+        Assert.Equal(100, result.Value!.Semelhanca);
+        Assert.Equal(80, result.Value.Nota);
+        Assert.Equal("Boa entrega.", result.Value.Comentario);
+        Assert.False(result.Value.PodeAvaliar);
+    }
 }

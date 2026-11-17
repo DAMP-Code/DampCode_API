@@ -12,7 +12,7 @@ namespace DampCode_API.Controllers;
 [Route("api/[controller]")]
 [ApiController]
 public sealed class HackathonsController(IHackathonService hackathonService, IParticipationService participationService,
-    ISubmissionService submissionService) : ControllerBase
+    ISubmissionService submissionService, IEvaluationService evaluationService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
@@ -142,6 +142,35 @@ public sealed class HackathonsController(IHackathonService hackathonService, IPa
             ? ToActionResult(await submissionService.GetReferenceAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
             : Unauthorized();
 
+    // Avaliação da empresa: ranking com notas, nota por entrega, escolha dos vencedores e publicação do resultado.
+    [HttpGet("{id:guid}/avaliacao")]
+    public async Task<IActionResult> GetEvaluation(Guid id, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await evaluationService.GetRankingAsync(accountId, id, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpPut("{id:guid}/entregas/{submissionId:guid}/avaliacao")]
+    public async Task<IActionResult> EvaluateSubmission(Guid id, Guid submissionId, [FromBody] EvaluateDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await evaluationService.EvaluateAsync(accountId, id, submissionId, dto, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpPut("{id:guid}/vencedores")]
+    public async Task<IActionResult> SetWinners(Guid id, [FromBody] SetWinnersDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await evaluationService.SetWinnersAsync(accountId, id, dto, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpPost("{id:guid}/resultado")]
+    public async Task<IActionResult> PublishResults(Guid id, CancellationToken cancellationToken)
+    {
+        if (!TryGetAccountId(out var accountId)) return Unauthorized();
+        var result = await evaluationService.PublishResultsAsync(accountId, id, cancellationToken);
+        return result.Succeeded
+            ? ToActionResult(await hackathonService.GetByIdAsync(accountId, id.ToString(), cancellationToken), StatusCodes.Status200OK)
+            : ToActionResult(result, StatusCodes.Status200OK);
+    }
+
     private bool TryGetAccountId(out Guid accountId) =>
         Guid.TryParse(User.FindFirstValue(JwtRegisteredClaimNames.Sub), out accountId);
 
@@ -170,6 +199,20 @@ public sealed class HackathonsController(IHackathonService hackathonService, IPa
             SubmissionServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
             SubmissionServiceError.Conflict => Conflict(problem),
             SubmissionServiceError.Validation => BadRequest(problem),
+            _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
+        };
+    }
+
+    private IActionResult ToActionResult<T>(EvaluationServiceResult<T> result, int successStatusCode)
+    {
+        if (result.Succeeded) return StatusCode(successStatusCode, result.Value);
+        var problem = new ProblemDetails { Detail = result.Message };
+        return result.Error switch
+        {
+            EvaluationServiceError.NotFound => NotFound(problem),
+            EvaluationServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
+            EvaluationServiceError.Conflict => Conflict(problem),
+            EvaluationServiceError.Validation => BadRequest(problem),
             _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
         };
     }

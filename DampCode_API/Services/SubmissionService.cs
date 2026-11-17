@@ -143,7 +143,13 @@ public sealed class SubmissionService(DampCodeDbContext dbContext, ICompanyAcces
         var name = submission.Team?.Name ?? submission.Participation?.Account.UserProfile?.Name ?? submission.Participation?.Account.Email ?? "";
         var versions = await LoadVersionsAsync(submission, cancellationToken);
         var current = await LoadCodeAsync(submission.Id, submission.CurrentVersion, cancellationToken);
-        return new(true, new SubmissionDetailDto(submission.Id, name, versions, current));
+        var language = await dbContext.SubmissionVersions.AsNoTracking()
+            .Where(item => item.SubmissionId == submission.Id && item.Version == submission.CurrentVersion)
+            .Select(item => item.Language)
+            .SingleOrDefaultAsync(cancellationToken);
+        var similarity = await EvaluationService.SuggestAsync(hackathon, submission, language, versionStore, cancellationToken);
+        return new(true, new SubmissionDetailDto(submission.Id, name, versions, current, similarity, submission.Score, submission.Feedback,
+            EvaluationService.CanEvaluate(hackathon, DateTime.UtcNow)));
     }
 
     public async Task<SubmissionServiceResult<SubmissionCodeDto>> GetEntryVersionAsync(Guid accountId, Guid hackathonId, Guid submissionId, int version, CancellationToken cancellationToken)

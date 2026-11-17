@@ -36,7 +36,7 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
             // Inscrição simultânea: o índice ux_participations_active_account barra a segunda.
             return Fail<MyParticipationDto>(ParticipationServiceError.Conflict, AlreadyRegisteredMessage);
         }
-        return new(true, ToDto(hackathon, null, DateTime.UtcNow));
+        return new(true, ToDto(hackathon, null, DateTime.UtcNow, null));
     }
 
     public async Task<ParticipationServiceResult<bool>> CancelRegistrationAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
@@ -166,7 +166,7 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
         invitation.Status = TeamInvitationStatus.Accepted;
         invitation.RespondedAt = DateTime.UtcNow;
         if (await JoinTeamAsync<MyParticipationDto>(account!, invitation.Team, cancellationToken) is { } joinFailure) return joinFailure;
-        return new(true, ToDto(hackathon!, await BuildTeamDtoAsync(invitation.TeamId, cancellationToken), DateTime.UtcNow));
+        return new(true, ToDto(hackathon!, await BuildTeamDtoAsync(invitation.TeamId, cancellationToken), DateTime.UtcNow, null));
     }
 
     public async Task<ParticipationServiceResult<bool>> DeclineInvitationAsync(Guid accountId, Guid invitationId, CancellationToken cancellationToken)
@@ -289,13 +289,15 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
         var now = DateTime.UtcNow;
         var participations = await dbContext.Participations.AsNoTracking()
             .Include(item => item.Hackathon).ThenInclude(item => item.Company)
+            .Include(item => item.Hackathon).ThenInclude(item => item.Prizes)
             .Where(item => item.AccountId == accountId && item.LeftAt == null)
             .ToListAsync(cancellationToken);
         var inscricoes = new List<MyParticipationDto>();
         foreach (var participation in participations.OrderBy(item => item.Hackathon.StartsAt))
         {
             var team = participation.TeamId is { } teamId ? await BuildTeamDtoAsync(teamId, cancellationToken) : null;
-            inscricoes.Add(ToDto(participation.Hackathon, team, now));
+            var result = participation.Hackathon.ResultsPublishedAt is null ? null : await BuildResultAsync(participation, cancellationToken);
+            inscricoes.Add(ToDto(participation.Hackathon, team, now, result));
         }
 
         var received = await dbContext.TeamInvitations.AsNoTracking()
@@ -480,14 +482,31 @@ public sealed class ParticipationService(DampCodeDbContext dbContext, ICompanyAc
         }
     }
 
-    private static MyParticipationDto ToDto(Hackathon hackathon, MyTeamDto? team, DateTime now) => new(
+    // Resultado publicado: a entrega é da equipe (equipe) ou da inscrição (individual); sem entrega, só o total.
+    private async Task<ParticipationResultDto> BuildResultAsync(Participation participation, CancellationToken cancellationToken)
+    {
+        var hackathon = participation.Hackathon;
+        var submission = await dbContext.Submissions.AsNoTracking().SingleOrDefaultAsync(item => item.HackathonId == hackathon.Id
+            && (participation.TeamId != null ? item.TeamId == participation.TeamId : item.ParticipationId == participation.Id), cancellationToken);
+        var positions = await dbContext.Submissions.AsNoTracking().Where(item => item.HackathonId == hackathon.Id && item.FinalPosition != null)
+            .Select(item => item.FinalPosition!.Value).ToListAsync(cancellationToken);
+        // o total nunca fica abaixo da própria posição (prêmios sem vencedor deixam buracos na classificação)
+        var total = positions.Count == 0 ? 0 : Math.Max(positions.Count, positions.Max());
+        var prize = submission?.PrizePosition is { } position
+            ? HackathonService.ToPrizeDtos(hackathon.Prizes.Where(item => item.Position == position)).SingleOrDefault()
+            : null;
+        return new ParticipationResultDto(submission?.FinalPosition, total, submission?.Score, submission?.Feedback, prize);
+    }
+
+    private static MyParticipationDto ToDto(Hackathon hackathon, MyTeamDto? team, DateTime now, ParticipationResultDto? result) => new(
         hackathon.Id,
         hackathon.Title,
         hackathon.Company.Name,
         HackathonPhases.ToText(HackathonPhases.GetPhase(hackathon, now)),
         hackathon.ParticipationMode == HackathonParticipationMode.Team ? "Equipe" : "Individual",
         hackathon.StartsAt,
-        team);
+        team,
+        result);
 
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static ParticipationServiceResult<T> Fail<T>(ParticipationServiceError error, string message) => new(false, Error: error, Message: message);
