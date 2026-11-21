@@ -14,5 +14,6 @@ public static class UserResponseProjection
             AccountRoles.ToFrontRole(account.AccountType),
             account.UserProfile == null ? null : account.UserProfile.Level,
             account.UserProfile == null ? null : account.UserProfile.Xp,
-            account.AvatarColor));
+            account.AvatarColor,
+            account.AvatarImage));
 }

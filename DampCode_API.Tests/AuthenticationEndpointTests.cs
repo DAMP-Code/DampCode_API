@@ -182,6 +182,43 @@ public sealed class AuthenticationEndpointTests(ApiFactory factory) : IClassFixt
         Assert.Equal("Cor inválida. Use o formato #RRGGBB.", problem!.Detail);
     }
 
+    private const string Png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    [Fact]
+    public async Task UpdateMe_Image_IsReturnedByMeAndCanBeRemoved()
+    {
+        var client = factory.CreateClient();
+        var auth = await RegisterAsync(client);
+
+        var saved = await client.SendAsync(Put("/api/Auth/me", auth.Token, new { avatarImage = Png }));
+        var savedJson = await saved.Content.ReadAsStringAsync();
+        var afterSave = await (await client.SendAsync(Get("/api/Auth/me", auth.Token))).Content.ReadFromJsonAsync<UserResponseDto>();
+        var removed = await client.SendAsync(Put("/api/Auth/me", auth.Token, new { avatarImage = "" }));
+        var afterRemove = await (await client.SendAsync(Get("/api/Auth/me", auth.Token))).Content.ReadFromJsonAsync<UserResponseDto>();
+
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        Assert.Contains("\"avatarImage\":\"data:image/png;base64,", savedJson);
+        Assert.Equal(Png, afterSave!.AvatarImage);
+        Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
+        Assert.Null(afterRemove!.AvatarImage);
+    }
+
+    [Theory]
+    [InlineData("data:image/gif;base64,R0lGODlhAQABAAAAACw=")]
+    [InlineData("too-long")]
+    public async Task UpdateMe_InvalidImage_Returns400WithDetail(string image)
+    {
+        var client = factory.CreateClient();
+        var auth = await RegisterAsync(client);
+        if (image == "too-long") image = "data:image/png;base64," + new string('A', 400_000);
+
+        var response = await client.SendAsync(Put("/api/Auth/me", auth.Token, new { avatarImage = image }));
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Foto inválida. Envie PNG, JPG ou WebP de até 300 KB.", problem!.Detail);
+    }
+
     [Fact]
     public async Task UpdateMe_WithoutToken_Returns401()
     {

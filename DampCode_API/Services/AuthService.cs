@@ -11,6 +11,10 @@ public sealed class AuthService(DampCodeDbContext dbContext, ITokenService token
 {
     // \z em vez de $: o $ do .NET aceita um "\n" no fim, que estouraria a coluna de 7 caracteres.
     private static readonly Regex ColorPattern = new(@"^#[0-9A-Fa-f]{6}\z", RegexOptions.Compiled);
+    // Foto vai direto para o src no front: só imagem raster em data URL, como o logo do Hackathon.
+    // O front já reduz para 256x256; 400 mil caracteres cobrem uns 300 KB de imagem.
+    private const int MaxAvatarImageLength = 400_000;
+    private static readonly Regex AvatarImagePattern = new(@"^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+\z", RegexOptions.Compiled);
 
     public async Task<AuthServiceResult> RegisterParticipantAsync(ParticipantDto dto, CancellationToken cancellationToken)
     {
@@ -100,21 +104,29 @@ public sealed class AuthService(DampCodeDbContext dbContext, ITokenService token
             .SingleOrDefaultAsync(item => item.Id == accountId && item.DeletedAt == null, cancellationToken);
         if (account is null) return new(false, Error: AuthServiceError.NotFound, Message: "Usuário não encontrado.");
 
-        var now = DateTime.UtcNow;
-        if (dto.Name is not null)
+        // Tudo é validado antes de mexer na conta: um campo inválido não salva os outros.
+        var name = dto.Name?.Trim();
+        if (name is not null)
         {
             // O nome só existe no perfil do participante; empresa e admin não editam por aqui.
             if (account.AccountType == AccountType.Company) return Invalid<UserResponseDto>("O nome da empresa não pode ser mudado por aqui.");
             if (account.UserProfile is null) return Invalid<UserResponseDto>("Esta conta não tem nome para editar.");
-            var name = dto.Name.Trim();
             if (name.Length is < 2 or > 150) return Invalid<UserResponseDto>("O nome precisa ter entre 2 e 150 caracteres.");
-            account.UserProfile.Name = name;
-            account.UserProfile.UpdatedAt = now;
         }
-
         if (!string.IsNullOrEmpty(dto.AvatarColor) && !ColorPattern.IsMatch(dto.AvatarColor))
             return Invalid<UserResponseDto>("Cor inválida. Use o formato #RRGGBB.");
+        if (!string.IsNullOrEmpty(dto.AvatarImage) && (dto.AvatarImage.Length > MaxAvatarImageLength || !AvatarImagePattern.IsMatch(dto.AvatarImage)))
+            return Invalid<UserResponseDto>("Foto inválida. Envie PNG, JPG ou WebP de até 300 KB.");
+
+        var now = DateTime.UtcNow;
+        if (name is not null)
+        {
+            account.UserProfile!.Name = name;
+            account.UserProfile.UpdatedAt = now;
+        }
         account.AvatarColor = string.IsNullOrEmpty(dto.AvatarColor) ? null : dto.AvatarColor;
+        // Foto nula fica como está; vazia remove.
+        if (dto.AvatarImage is not null) account.AvatarImage = dto.AvatarImage.Length == 0 ? null : dto.AvatarImage;
         account.UpdatedAt = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -196,6 +208,6 @@ public sealed class AuthService(DampCodeDbContext dbContext, ITokenService token
     {
         var token = tokenService.GenerateToken(account);
         return new(true, new AuthResponseDto(account.Id, name, account.Email,
-            AccountRoles.ToFrontRole(account.AccountType), token.Token, token.ExpiresAt, account.AvatarColor));
+            AccountRoles.ToFrontRole(account.AccountType), token.Token, token.ExpiresAt, account.AvatarColor, account.AvatarImage));
     }
 }

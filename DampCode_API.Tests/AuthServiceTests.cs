@@ -333,6 +333,100 @@ public sealed class AuthServiceTests
         Assert.Equal("#C68FE6", user!.AvatarColor);
     }
 
+    private const string Png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+    [Theory]
+    [InlineData(Png)]
+    [InlineData("data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==")]
+    [InlineData("data:image/webp;base64,UklGRhYAAABXRUJQ")]
+    public async Task UpdateAccount_ValidImage_IsSavedAndReturned(string image)
+    {
+        var registered = (await _service.RegisterParticipantAsync(Participant(), CancellationToken.None)).Value!;
+
+        var result = await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { AvatarImage = image }, CancellationToken.None);
+        var login = await _service.LoginAsync(new LoginDto { Email = "ana@exemplo.com", Password = "SenhaForte123" }, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(image, result.Value!.AvatarImage);
+        Assert.Equal(image, _dbContext.Accounts.Single().AvatarImage);
+        Assert.Equal(image, login.Value!.AvatarImage);
+    }
+
+    [Fact]
+    public async Task UpdateAccount_NullImage_KeepsPhoto()
+    {
+        var registered = (await _service.RegisterParticipantAsync(Participant(), CancellationToken.None)).Value!;
+        await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { AvatarImage = Png }, CancellationToken.None);
+
+        var result = await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { Name = "Ana Lima", AvatarImage = null }, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(Png, result.Value!.AvatarImage);
+    }
+
+    [Fact]
+    public async Task UpdateAccount_EmptyImage_RemovesPhoto()
+    {
+        var registered = (await _service.RegisterParticipantAsync(Participant(), CancellationToken.None)).Value!;
+        await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { AvatarImage = Png }, CancellationToken.None);
+
+        var result = await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { AvatarImage = "" }, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Null(result.Value!.AvatarImage);
+        Assert.Null(_dbContext.Accounts.Single().AvatarImage);
+    }
+
+    [Theory]
+    [InlineData("data:image/gif;base64,R0lGODlhAQABAAAAACw=")]
+    [InlineData("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")]
+    [InlineData("data:image/png,iVBORw0KGgo=")]
+    [InlineData("https://exemplo.com/foto.png")]
+    [InlineData("data:image/png;base64,")]
+    [InlineData("data:image/png;base64,\"><script>alert(1)</script>")]
+    [InlineData(" ")]
+    public async Task UpdateAccount_InvalidImage_IsValidation(string image)
+    {
+        var registered = (await _service.RegisterParticipantAsync(Participant(), CancellationToken.None)).Value!;
+
+        var result = await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { AvatarImage = image }, CancellationToken.None);
+
+        Assert.Equal(AuthServiceError.Validation, result.Error);
+        Assert.Equal("Foto inválida. Envie PNG, JPG ou WebP de até 300 KB.", result.Message);
+    }
+
+    [Fact]
+    public async Task UpdateAccount_ImageAtLengthLimit_Succeeds_AndOneMoreIsValidation()
+    {
+        var registered = (await _service.RegisterParticipantAsync(Participant(), CancellationToken.None)).Value!;
+        const string prefix = "data:image/png;base64,";
+
+        var atLimit = await _service.UpdateAccountAsync(registered.Id,
+            new UpdateAccountDto { AvatarImage = prefix + new string('A', 400_000 - prefix.Length) }, CancellationToken.None);
+        var tooLong = await _service.UpdateAccountAsync(registered.Id,
+            new UpdateAccountDto { AvatarImage = prefix + new string('A', 400_001 - prefix.Length) }, CancellationToken.None);
+
+        Assert.True(atLimit.Succeeded);
+        Assert.Equal(AuthServiceError.Validation, tooLong.Error);
+    }
+
+    [Fact]
+    public async Task UpdateAccount_InvalidField_ChangesNothing()
+    {
+        var registered = (await _service.RegisterParticipantAsync(Participant(), CancellationToken.None)).Value!;
+        await _service.UpdateAccountAsync(registered.Id, new UpdateAccountDto { AvatarColor = "#C68FE6", AvatarImage = Png }, CancellationToken.None);
+
+        var result = await _service.UpdateAccountAsync(registered.Id,
+            new UpdateAccountDto { Name = "Ana Lima", AvatarColor = "#000000", AvatarImage = "data:image/gif;base64,R0lG" }, CancellationToken.None);
+
+        Assert.False(result.Succeeded);
+        var user = await _service.GetAccountAsync(registered.Id, CancellationToken.None);
+        Assert.Equal("Ana Souza", user!.Name);
+        Assert.Equal("#C68FE6", user.AvatarColor);
+        Assert.Equal(Png, user.AvatarImage);
+        Assert.Equal("Ana Souza", _dbContext.UserProfiles.Single().Name);
+    }
+
     private static ChangePasswordDto NewPassword(string current = "SenhaForte123", string next = "NovaSenhaForte456") =>
         new() { SenhaAtual = current, NovaSenha = next };
 
