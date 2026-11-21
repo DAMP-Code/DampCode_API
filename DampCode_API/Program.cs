@@ -53,6 +53,7 @@ builder.Services.AddScoped<IHackathonService, HackathonService>();
 builder.Services.AddScoped<IParticipationService, ParticipationService>();
 builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<IEvaluationService, EvaluationService>();
+builder.Services.AddScoped<IHackathonModuleService, HackathonModuleService>();
 
 builder.Services.AddCors(options =>
 {

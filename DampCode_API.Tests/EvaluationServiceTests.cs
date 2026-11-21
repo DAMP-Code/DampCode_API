@@ -369,4 +369,166 @@ public sealed class EvaluationServiceTests
         Assert.Equal(EvaluationServiceError.Conflict, result.Error);
         Assert.Equal("Este Hackathon já foi encerrado ou cancelado.", result.Message);
     }
+
+    [Fact]
+    public async Task Result_Published_SamePositionsAsParticipantResult()
+    {
+        var (company, hackathon, submissions) = await ReviewingAsync(participants: 5);
+        int[] scores = [90, 80, 70, 60, 50];
+        for (var index = 0; index < scores.Length; index++) await GradeAsync(company, hackathon, submissions[index], scores[index]);
+        await _service.SetWinnersAsync(company.PrimaryAccountId, hackathon.Id,
+            Winners((1, submissions[2].Id), (3, submissions[0].Id)), CancellationToken.None);
+        await _service.PublishResultsAsync(company.PrimaryAccountId, hackathon.Id, CancellationToken.None);
+
+        var result = await _service.GetResultAsync(null, hackathon.Id.ToString(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(result.Value!.ResultadoPublicado);
+        Assert.Equal(hackathon.Title, result.Value.Titulo);
+        Assert.Equal([1, 3, 4, 5, 6], result.Value.Classificacao.Select(item => item.Posicao));
+        Assert.Equal(["Pessoa 2", "Pessoa 0", "Pessoa 1", "Pessoa 3", "Pessoa 4"], result.Value.Classificacao.Select(item => item.Nome));
+        Assert.All(result.Value.Classificacao, item => Assert.False(item.Equipe));
+        Assert.All(result.Value.Classificacao, item => Assert.False(item.Voce));
+        Assert.Equal(["Pessoa 2"], result.Value.Classificacao[0].Membros);
+        Assert.Equal(70, result.Value.Classificacao[0].Nota);
+        Assert.Equal(1000m, result.Value.Classificacao[0].Premio!.Valor);
+        Assert.Equal(3, result.Value.Classificacao[1].Premio!.Posicao);
+        Assert.Null(result.Value.Classificacao[2].Premio);
+
+        // Cada participante vê no próprio resultado a mesma posição e o mesmo total.
+        var participations = new ParticipationService(TestDb.CreateShared(_databaseName), new CompanyAccessService(_dbContext));
+        var db = TestDb.CreateShared(_databaseName);
+        foreach (var submission in submissions)
+        {
+            var participation = await db.Participations.Include(item => item.Account).ThenInclude(item => item.UserProfile)
+                .SingleAsync(item => item.Id == submission.ParticipationId);
+            var mine = Assert.Single((await participations.GetMineAsync(participation.AccountId, CancellationToken.None)).Inscricoes).Resultado!;
+            var entry = result.Value.Classificacao.Single(item => item.Nome == participation.Account.UserProfile!.Name);
+            Assert.Equal(mine.Posicao, entry.Posicao);
+            Assert.Equal(mine.TotalClassificados, result.Value.TotalClassificados);
+            Assert.Equal(mine.Premio?.Posicao, entry.Premio?.Posicao);
+        }
+        Assert.Equal(6, result.Value.TotalClassificados);
+    }
+
+    [Fact]
+    public async Task Result_NotPublished_ReturnsEmpty()
+    {
+        var (company, hackathon, submissions) = await ReviewingAsync();
+        await GradeAsync(company, hackathon, submissions[0], 90);
+
+        var result = await _service.GetResultAsync(null, hackathon.Id.ToString(), CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(hackathon.Id, result.Value!.HackathonId);
+        Assert.False(result.Value.ResultadoPublicado);
+        Assert.Equal(0, result.Value.TotalClassificados);
+        Assert.Empty(result.Value.Classificacao);
+    }
+
+    [Fact]
+    public async Task Result_BySlug_Succeeds()
+    {
+        var (_, hackathon, _) = await ReviewingAsync(participants: 1);
+
+        var result = await _service.GetResultAsync(null, hackathon.Slug, CancellationToken.None);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(hackathon.Id, result.Value!.HackathonId);
+    }
+
+    [Fact]
+    public async Task Result_Draft_OnlyOwnerSees()
+    {
+        var (company, hackathon, _) = await ReviewingAsync(participants: 1);
+        hackathon.Status = HackathonStatus.Draft;
+        await _dbContext.SaveChangesAsync();
+        var other = await CompanySeed.CompanyAsync(_dbContext, "outra@exemplo.com", CompanyVerificationStatus.Verified);
+        var stranger = await CompanySeed.ParticipantAsync(_dbContext, "estranho@exemplo.com");
+
+        var anonymous = await _service.GetResultAsync(null, hackathon.Id.ToString(), CancellationToken.None);
+        var otherCompany = await _service.GetResultAsync(other.PrimaryAccountId, hackathon.Id.ToString(), CancellationToken.None);
+        var participant = await _service.GetResultAsync(stranger.Id, hackathon.Id.ToString(), CancellationToken.None);
+        var owner = await _service.GetResultAsync(company.PrimaryAccountId, hackathon.Id.ToString(), CancellationToken.None);
+
+        Assert.Equal((EvaluationServiceError.NotFound, "Hackathon não encontrado."), (anonymous.Error, anonymous.Message));
+        Assert.Equal(EvaluationServiceError.NotFound, otherCompany.Error);
+        Assert.Equal(EvaluationServiceError.NotFound, participant.Error);
+        Assert.True(owner.Succeeded, owner.Message);
+    }
+
+    [Fact]
+    public async Task Result_Unknown_ReturnsNotFound()
+    {
+        var result = await _service.GetResultAsync(null, Guid.NewGuid().ToString(), CancellationToken.None);
+
+        Assert.Equal((EvaluationServiceError.NotFound, "Hackathon não encontrado."), (result.Error, result.Message));
+    }
+
+    [Fact]
+    public async Task Result_Teams_ListActiveMembersAndMarkCaller()
+    {
+        var (_, hackathon, _) = await ReviewingAsync(participants: 0);
+        hackathon.ParticipationMode = HackathonParticipationMode.Team;
+        var ana = await CompanySeed.ParticipantAsync(_dbContext, "ana@exemplo.com", "Ana Ribeiro");
+        var bruno = await CompanySeed.ParticipantAsync(_dbContext, "bruno@exemplo.com", "Bruno Souza");
+        var carla = await CompanySeed.ParticipantAsync(_dbContext, "carla@exemplo.com", "Carla Dias");
+        var davi = await CompanySeed.ParticipantAsync(_dbContext, "davi@exemplo.com", "Davi Rocha");
+        AddTeam(hackathon, "Turma do Bit", score: 92, position: 1, (ana, null), (bruno, DateTime.UtcNow), (carla, null));
+        AddTeam(hackathon, "Equipe Dois", score: 70, position: 2, (davi, null));
+        hackathon.ResultsPublishedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+
+        var asAna = await _service.GetResultAsync(ana.Id, hackathon.Id.ToString(), CancellationToken.None);
+        var asBruno = await _service.GetResultAsync(bruno.Id, hackathon.Id.ToString(), CancellationToken.None);
+
+        var entries = asAna.Value!.Classificacao;
+        Assert.Equal(2, asAna.Value.TotalClassificados);
+        Assert.Equal(["Turma do Bit", "Equipe Dois"], entries.Select(item => item.Nome));
+        Assert.All(entries, item => Assert.True(item.Equipe));
+        Assert.Equal(["Ana Ribeiro", "Carla Dias"], entries[0].Membros);
+        Assert.Equal(["Davi Rocha"], entries[1].Membros);
+        Assert.Equal(92, entries[0].Nota);
+        Assert.Equal("Dinheiro", entries[0].Premio!.Tipo);
+        Assert.Equal([true, false], entries.Select(item => item.Voce));
+        // quem saiu da equipe não aparece nem é marcado
+        Assert.All(asBruno.Value!.Classificacao, item => Assert.False(item.Voce));
+    }
+
+    // Equipe com uma entrega já classificada; LeftAt preenchido é quem saiu da equipe.
+    private void AddTeam(Hackathon hackathon, string name, int score, int position, params (Account Account, DateTime? LeftAt)[] members)
+    {
+        var team = new HackathonTeam
+        {
+            HackathonId = hackathon.Id,
+            CreatedByAccountId = members[0].Account.Id,
+            Name = name,
+            NormalizedName = name.ToUpperInvariant(),
+            MemberCount = members.Count(item => item.LeftAt is null)
+        };
+        _dbContext.HackathonTeams.Add(team);
+        for (var index = 0; index < members.Length; index++)
+            _dbContext.Participations.Add(new Participation
+            {
+                HackathonId = hackathon.Id,
+                AccountId = members[index].Account.Id,
+                TeamId = team.Id,
+                JoinedAt = DateTime.UtcNow.AddDays(-10).AddMinutes(index),
+                LeftAt = members[index].LeftAt
+            });
+        var sentAt = DateTime.UtcNow.AddDays(-2);
+        _dbContext.Submissions.Add(new Submission
+        {
+            HackathonId = hackathon.Id,
+            TeamId = team.Id,
+            Status = "Evaluated",
+            CurrentVersion = 1,
+            FirstSubmittedAt = sentAt,
+            LastSubmittedAt = sentAt,
+            Score = score,
+            Feedback = "Comentário interno da empresa",
+            PrizePosition = position,
+            FinalPosition = position
+        });
+    }
 }

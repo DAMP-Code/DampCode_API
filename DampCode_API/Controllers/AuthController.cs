@@ -35,15 +35,38 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
         return user is null ? NotFound(new { message = "Usuário não encontrado." }) : Ok(user);
     }
 
-    private IActionResult ToActionResult(AuthServiceResult result, int successStatusCode)
+    // Campos que o front deixa a pessoa mudar: nome (só participante) e cor do avatar.
+    [Authorize]
+    [HttpPut("me")]
+    public async Task<IActionResult> UpdateMe([FromBody] UpdateAccountDto dto, CancellationToken cancellationToken)
     {
-        if (result.Succeeded) return StatusCode(successStatusCode, result.Value);
-        var problem = new ProblemDetails { Detail = result.Message };
-        return result.Error switch
+        if (!Guid.TryParse(User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var accountId)) return Unauthorized();
+        var result = await authService.UpdateAccountAsync(accountId, dto, cancellationToken);
+        return result.Succeeded ? Ok(result.Value) : ToProblem(result.Error, result.Message);
+    }
+
+    // Devolve um token novo: os tokens antigos deixam de valer com a troca.
+    [Authorize]
+    [HttpPut("me/senha")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto dto, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(JwtRegisteredClaimNames.Sub), out var accountId)) return Unauthorized();
+        return ToActionResult(await authService.ChangePasswordAsync(accountId, dto, cancellationToken), StatusCodes.Status200OK);
+    }
+
+    private IActionResult ToActionResult(AuthServiceResult result, int successStatusCode) =>
+        result.Succeeded ? StatusCode(successStatusCode, result.Value) : ToProblem(result.Error, result.Message);
+
+    private IActionResult ToProblem(AuthServiceError error, string? message)
+    {
+        var problem = new ProblemDetails { Detail = message };
+        return error switch
         {
             AuthServiceError.Conflict => Conflict(problem),
             AuthServiceError.InvalidCredentials => Unauthorized(problem),
             AuthServiceError.InactiveAccount => StatusCode(StatusCodes.Status403Forbidden, problem),
+            AuthServiceError.Validation => BadRequest(problem),
+            AuthServiceError.NotFound => NotFound(problem),
             _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
         };
     }

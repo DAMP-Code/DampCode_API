@@ -94,3 +94,44 @@ public sealed class HackathonTechnologyConfiguration : IEntityTypeConfiguration<
             .HasForeignKey(item => item.TechnologyId).OnDelete(DeleteBehavior.Restrict).HasConstraintName("fk_hackathon_technologies_technologies");
     }
 }
+
+public sealed class HackathonModuleConfiguration : IEntityTypeConfiguration<HackathonModule>
+{
+    public void Configure(EntityTypeBuilder<HackathonModule> builder)
+    {
+        builder.ToTable("hackathon_modules");
+        builder.HasKey(item => item.Id).HasName("pk_hackathon_modules");
+        builder.Property(item => item.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(item => item.HackathonId).HasColumnName("hackathon_id").IsRequired();
+        builder.Property(item => item.Position).HasColumnName("position").IsRequired();
+        builder.Property(item => item.Title).HasColumnName("title").HasMaxLength(120).IsRequired();
+        builder.Property(item => item.Description).HasColumnName("description").HasMaxLength(1000);
+        builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.Property(item => item.UpdatedAt).HasColumnName("updated_at").IsRequired();
+        builder.HasIndex(item => new { item.HackathonId, item.Position }).IsUnique().HasDatabaseName("ux_hackathon_modules_position");
+        builder.HasOne(item => item.Hackathon).WithMany(hackathon => hackathon.Modules)
+            .HasForeignKey(item => item.HackathonId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_hackathon_modules_hackathons");
+    }
+}
+
+public sealed class HackathonModuleContentConfiguration : IEntityTypeConfiguration<HackathonModuleContent>
+{
+    public void Configure(EntityTypeBuilder<HackathonModuleContent> builder)
+    {
+        builder.ToTable("hackathon_module_contents", table =>
+            table.HasCheckConstraint("ck_hackathon_module_contents_content_type", "content_type IN ('Text', 'Link', 'Video')"));
+        builder.HasKey(item => item.Id).HasName("pk_hackathon_module_contents");
+        builder.Property(item => item.Id).HasColumnName("id").ValueGeneratedNever();
+        builder.Property(item => item.ModuleId).HasColumnName("module_id").IsRequired();
+        builder.Property(item => item.Position).HasColumnName("position").IsRequired();
+        builder.Property(item => item.ContentType).HasColumnName("content_type").HasConversion<string>().HasMaxLength(10).IsRequired();
+        builder.Property(item => item.Title).HasColumnName("title").HasMaxLength(160).IsRequired();
+        builder.Property(item => item.Body).HasColumnName("body").HasColumnType("text");
+        builder.Property(item => item.Url).HasColumnName("url").HasMaxLength(2048);
+        builder.Property(item => item.CreatedAt).HasColumnName("created_at").IsRequired();
+        builder.Property(item => item.UpdatedAt).HasColumnName("updated_at").IsRequired();
+        builder.HasIndex(item => new { item.ModuleId, item.Position }).IsUnique().HasDatabaseName("ux_hackathon_module_contents_position");
+        builder.HasOne(item => item.Module).WithMany(module => module.Contents)
+            .HasForeignKey(item => item.ModuleId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_hackathon_module_contents_hackathon_modules");
+    }
+}

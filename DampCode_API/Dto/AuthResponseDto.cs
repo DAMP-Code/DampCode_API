@@ -1,3 +1,3 @@
 namespace DampCode_API.Dto;
 
-public sealed record AuthResponseDto(Guid Id, string Name, string Email, string Role, string Token, DateTime ExpiresAt);
+public sealed record AuthResponseDto(Guid Id, string Name, string Email, string Role, string Token, DateTime ExpiresAt, string? AvatarColor, string? AvatarImage);

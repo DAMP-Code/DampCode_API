@@ -34,6 +34,15 @@ namespace DampCode_API.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("account_type");
 
+                    b.Property<string>("AvatarColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("avatar_color");
+
+                    b.Property<string>("AvatarImage")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_image");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -486,6 +495,105 @@ namespace DampCode_API.Data.Migrations
                             t.HasCheckConstraint("ck_hackathons_status", "status IN ('Draft', 'Scheduled', 'Active', 'InReview', 'Closed', 'Cancelled')");
 
                             t.HasCheckConstraint("ck_hackathons_winners_count", "winners_count IS NULL OR winners_count BETWEEN 1 AND 10 OR winners_count IN (15, 20, 50, 100)");
+                        });
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonModule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("HackathonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hackathon_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_hackathon_modules");
+
+                    b.HasIndex("HackathonId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ux_hackathon_modules_position");
+
+                    b.ToTable("hackathon_modules", (string)null);
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonModuleContent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("ModuleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("module_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("url");
+
+                    b.HasKey("Id")
+                        .HasName("pk_hackathon_module_contents");
+
+                    b.HasIndex("ModuleId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ux_hackathon_module_contents_position");
+
+                    b.ToTable("hackathon_module_contents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_hackathon_module_contents_content_type", "content_type IN ('Text', 'Link', 'Video')");
                         });
                 });
 
@@ -1163,6 +1271,30 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("DampCode_API.Models.HackathonModule", b =>
+                {
+                    b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
+                        .WithMany("Modules")
+                        .HasForeignKey("HackathonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_modules_hackathons");
+
+                    b.Navigation("Hackathon");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonModuleContent", b =>
+                {
+                    b.HasOne("DampCode_API.Models.HackathonModule", "Module")
+                        .WithMany("Contents")
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_hackathon_module_contents_hackathon_modules");
+
+                    b.Navigation("Module");
+                });
+
             modelBuilder.Entity("DampCode_API.Models.HackathonPrize", b =>
                 {
                     b.HasOne("DampCode_API.Models.Hackathon", "Hackathon")
@@ -1396,6 +1528,8 @@ namespace DampCode_API.Data.Migrations
 
             modelBuilder.Entity("DampCode_API.Models.Hackathon", b =>
                 {
+                    b.Navigation("Modules");
+
                     b.Navigation("Participations");
 
                     b.Navigation("Prizes");
@@ -1405,6 +1539,11 @@ namespace DampCode_API.Data.Migrations
                     b.Navigation("Teams");
 
                     b.Navigation("Technologies");
+                });
+
+            modelBuilder.Entity("DampCode_API.Models.HackathonModule", b =>
+                {
+                    b.Navigation("Contents");
                 });
 
             modelBuilder.Entity("DampCode_API.Models.HackathonTeam", b =>

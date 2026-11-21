@@ -14,6 +14,10 @@ public sealed class Account
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? DeletedAt { get; set; }
+    // Cor do avatar escolhida pela pessoa (#RRGGBB); nula usa a cor padrão do front.
+    public string? AvatarColor { get; set; }
+    // Foto do perfil em data URL enquanto não existe Object Storage (mesmo caminho do Hackathon.Logo).
+    public string? AvatarImage { get; set; }
 
     public UserProfile? UserProfile { get; set; }
     public Company? PrimaryCompany { get; set; }
