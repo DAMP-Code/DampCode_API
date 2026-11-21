@@ -30,3 +30,22 @@ public sealed class HackathonModuleContent
 }
 
 public enum HackathonModuleContentType { Text, Link, Video }
+
+// Tipo como o front lê e envia: Texto, Link ou Video (o enum interno fica em inglês).
+public static class HackathonModuleContentTypes
+{
+    public static string ToText(HackathonModuleContentType type) => type switch
+    {
+        HackathonModuleContentType.Text => "Texto",
+        HackathonModuleContentType.Link => "Link",
+        _ => "Video"
+    };
+
+    public static HackathonModuleContentType? Parse(string? value) => value?.Trim().ToUpperInvariant() switch
+    {
+        "TEXTO" => HackathonModuleContentType.Text,
+        "LINK" => HackathonModuleContentType.Link,
+        "VIDEO" => HackathonModuleContentType.Video,
+        _ => null
+    };
+}
