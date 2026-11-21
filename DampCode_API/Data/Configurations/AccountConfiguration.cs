@@ -26,6 +26,8 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         builder.Property(account => account.CreatedAt).HasColumnName("created_at").IsRequired();
         builder.Property(account => account.UpdatedAt).HasColumnName("updated_at").IsRequired();
         builder.Property(account => account.DeletedAt).HasColumnName("deleted_at");
+        builder.Property(account => account.AvatarColor).HasColumnName("avatar_color").HasMaxLength(7);
+        builder.Property(account => account.AvatarImage).HasColumnName("avatar_image").HasColumnType("text");
         builder.HasIndex(account => account.NormalizedEmail).IsUnique().HasDatabaseName("ux_accounts_normalized_email");
     }
 }

@@ -34,6 +34,15 @@ namespace DampCode_API.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("account_type");
 
+                    b.Property<string>("AvatarColor")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("avatar_color");
+
+                    b.Property<string>("AvatarImage")
+                        .HasColumnType("text")
+                        .HasColumnName("avatar_image");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
