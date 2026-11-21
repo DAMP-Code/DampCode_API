@@ -58,6 +58,19 @@ public sealed class TokenServiceTests
         Assert.NotEqual(first.Id, second.Id);
     }
 
+    [Fact]
+    public void GenerateToken_NeverIssuedBeforeCredentialsChange()
+    {
+        var changedAt = DateTime.UtcNow.AddSeconds(1);
+        var account = NewAccount();
+        account.CredentialsChangedAt = changedAt;
+
+        var jwt = new JsonWebTokenHandler().ReadJsonWebToken(new TokenService(TestJwt.Options()).GenerateToken(account).Token);
+
+        Assert.True(jwt.TryGetPayloadValue<long>("iat", out var issuedAt));
+        Assert.Equal(new DateTimeOffset(changedAt).ToUnixTimeSeconds(), issuedAt);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("curta")]
