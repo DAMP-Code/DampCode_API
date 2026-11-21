@@ -12,7 +12,7 @@ namespace DampCode_API.Controllers;
 [Route("api/[controller]")]
 [ApiController]
 public sealed class HackathonsController(IHackathonService hackathonService, IParticipationService participationService,
-    ISubmissionService submissionService, IEvaluationService evaluationService) : ControllerBase
+    ISubmissionService submissionService, IEvaluationService evaluationService, IHackathonModuleService moduleService) : ControllerBase
 {
     [AllowAnonymous]
     [HttpGet]
@@ -171,6 +171,66 @@ public sealed class HackathonsController(IHackathonService hackathonService, IPa
             : ToActionResult(result, StatusCodes.Status200OK);
     }
 
+    // Módulos e conteúdos (material de apoio): todos veem o que podem ver do Hackathon; só a empresa dona edita.
+    [AllowAnonymous]
+    [HttpGet("{id}/modulos")]
+    public async Task<IActionResult> GetModules(string id, CancellationToken cancellationToken)
+    {
+        Guid? accountId = TryGetAccountId(out var currentAccountId) ? currentAccountId : null;
+        return ToActionResult(await moduleService.GetAsync(accountId, id, cancellationToken), StatusCodes.Status200OK);
+    }
+
+    [HttpPost("{id:guid}/modulos")]
+    public async Task<IActionResult> CreateModule(Guid id, [FromBody] SaveHackathonModuleDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.CreateModuleAsync(accountId, id, dto, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
+    [HttpPut("{id:guid}/modulos/ordem")]
+    public async Task<IActionResult> ReorderModules(Guid id, [FromBody] HackathonModuleOrderDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.ReorderModulesAsync(accountId, id, dto, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpPut("{id:guid}/modulos/{moduloId:guid}")]
+    public async Task<IActionResult> UpdateModule(Guid id, Guid moduloId, [FromBody] SaveHackathonModuleDto dto, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.UpdateModuleAsync(accountId, id, moduloId, dto, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpDelete("{id:guid}/modulos/{moduloId:guid}")]
+    public async Task<IActionResult> DeleteModule(Guid id, Guid moduloId, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.DeleteModuleAsync(accountId, id, moduloId, cancellationToken), StatusCodes.Status204NoContent)
+            : Unauthorized();
+
+    [HttpPost("{id:guid}/modulos/{moduloId:guid}/conteudos")]
+    public async Task<IActionResult> CreateModuleContent(Guid id, Guid moduloId, [FromBody] SaveHackathonModuleContentDto dto,
+        CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.CreateContentAsync(accountId, id, moduloId, dto, cancellationToken), StatusCodes.Status201Created)
+            : Unauthorized();
+
+    [HttpPut("{id:guid}/modulos/{moduloId:guid}/conteudos/ordem")]
+    public async Task<IActionResult> ReorderModuleContents(Guid id, Guid moduloId, [FromBody] HackathonModuleOrderDto dto,
+        CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.ReorderContentsAsync(accountId, id, moduloId, dto, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpPut("{id:guid}/modulos/{moduloId:guid}/conteudos/{conteudoId:guid}")]
+    public async Task<IActionResult> UpdateModuleContent(Guid id, Guid moduloId, Guid conteudoId, [FromBody] SaveHackathonModuleContentDto dto,
+        CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.UpdateContentAsync(accountId, id, moduloId, conteudoId, dto, cancellationToken), StatusCodes.Status200OK)
+            : Unauthorized();
+
+    [HttpDelete("{id:guid}/modulos/{moduloId:guid}/conteudos/{conteudoId:guid}")]
+    public async Task<IActionResult> DeleteModuleContent(Guid id, Guid moduloId, Guid conteudoId, CancellationToken cancellationToken) =>
+        TryGetAccountId(out var accountId)
+            ? ToActionResult(await moduleService.DeleteContentAsync(accountId, id, moduloId, conteudoId, cancellationToken), StatusCodes.Status204NoContent)
+            : Unauthorized();
+
     private bool TryGetAccountId(out Guid accountId) =>
         Guid.TryParse(User.FindFirstValue(JwtRegisteredClaimNames.Sub), out accountId);
 
@@ -213,6 +273,21 @@ public sealed class HackathonsController(IHackathonService hackathonService, IPa
             EvaluationServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
             EvaluationServiceError.Conflict => Conflict(problem),
             EvaluationServiceError.Validation => BadRequest(problem),
+            _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
+        };
+    }
+
+    private IActionResult ToActionResult<T>(HackathonModuleServiceResult<T> result, int successStatusCode)
+    {
+        if (result.Succeeded)
+            return successStatusCode == StatusCodes.Status204NoContent ? NoContent() : StatusCode(successStatusCode, result.Value);
+        var problem = new ProblemDetails { Detail = result.Message };
+        return result.Error switch
+        {
+            HackathonModuleServiceError.NotFound => NotFound(problem),
+            HackathonModuleServiceError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, problem),
+            HackathonModuleServiceError.Conflict => Conflict(problem),
+            HackathonModuleServiceError.Validation => BadRequest(problem),
             _ => StatusCode(StatusCodes.Status500InternalServerError, problem)
         };
     }
