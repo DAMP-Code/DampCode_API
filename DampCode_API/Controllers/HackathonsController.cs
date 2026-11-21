@@ -161,6 +161,15 @@ public sealed class HackathonsController(IHackathonService hackathonService, IPa
             ? ToActionResult(await evaluationService.SetWinnersAsync(accountId, id, dto, cancellationToken), StatusCodes.Status200OK)
             : Unauthorized();
 
+    // Classificação pública depois da publicação; com token, marca a linha de quem chamou.
+    [AllowAnonymous]
+    [HttpGet("{id}/resultado")]
+    public async Task<IActionResult> GetResults(string id, CancellationToken cancellationToken)
+    {
+        Guid? accountId = TryGetAccountId(out var currentAccountId) ? currentAccountId : null;
+        return ToActionResult(await evaluationService.GetResultAsync(accountId, id, cancellationToken), StatusCodes.Status200OK);
+    }
+
     [HttpPost("{id:guid}/resultado")]
     public async Task<IActionResult> PublishResults(Guid id, CancellationToken cancellationToken)
     {
