@@ -43,6 +43,7 @@ public sealed class Hackathon
     public ICollection<Participation> Participations { get; set; } = [];
     public ICollection<Submission> Submissions { get; set; } = [];
     public ICollection<HackathonPrize> Prizes { get; set; } = [];
+    public ICollection<HackathonModule> Modules { get; set; } = [];
 }
 
 public sealed class HackathonTechnology

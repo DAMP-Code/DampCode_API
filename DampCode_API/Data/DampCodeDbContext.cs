@@ -22,6 +22,8 @@ public sealed class DampCodeDbContext(DbContextOptions<DampCodeDbContext> option
     public DbSet<Submission> Submissions => Set<Submission>();
     public DbSet<SubmissionVersion> SubmissionVersions => Set<SubmissionVersion>();
     public DbSet<HackathonPrize> HackathonPrizes => Set<HackathonPrize>();
+    public DbSet<HackathonModule> HackathonModules => Set<HackathonModule>();
+    public DbSet<HackathonModuleContent> HackathonModuleContents => Set<HackathonModuleContent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DampCodeDbContext).Assembly);
