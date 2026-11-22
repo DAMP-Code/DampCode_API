@@ -22,7 +22,11 @@ public sealed class TokenService : ITokenService
     public TokenResult GenerateToken(Account account)
     {
         ArgumentNullException.ThrowIfNull(account);
-        var issuedAt = DateTime.UtcNow;
+        // O token nunca nasce antes da última troca de credenciais (ver AuthService.ChangePasswordAsync).
+        var now = DateTime.UtcNow;
+        var issuedAt = account.CredentialsChangedAt is { } changedAt && DateTime.SpecifyKind(changedAt, DateTimeKind.Utc) > now
+            ? DateTime.SpecifyKind(changedAt, DateTimeKind.Utc)
+            : now;
         var expiresAt = issuedAt.AddMinutes(_options.ExpirationMinutes);
 
         // Somente identificadores estáveis; nome, empresa e permissões são lidos do banco.

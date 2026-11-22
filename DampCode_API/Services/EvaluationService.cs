@@ -15,6 +15,7 @@ public sealed class EvaluationService(DampCodeDbContext dbContext, ICompanyAcces
     private const string PublishedMessage = "O resultado já foi publicado.";
     private const string NotOpenMessage = "A avaliação abre quando as submissões terminam.";
     private const string WinnersMessage = "Escolha um vencedor diferente para cada prêmio.";
+    private const string UnnamedParticipant = "Participante";
 
     public async Task<EvaluationServiceResult<EvaluationRankingDto>> GetRankingAsync(Guid accountId, Guid hackathonId, CancellationToken cancellationToken)
     {
@@ -117,6 +118,70 @@ public sealed class EvaluationService(DampCodeDbContext dbContext, ICompanyAcces
         await dbContext.SaveChangesAsync(cancellationToken);
         return new(true, true);
     }
+
+    // Classificação pública: mesma visibilidade de GET /api/Hackathons/{id}; posições e total iguais aos do resultado do participante.
+    public async Task<EvaluationServiceResult<HackathonResultDto>> GetResultAsync(Guid? accountId, string id, CancellationToken cancellationToken)
+    {
+        var query = dbContext.Hackathons.AsNoTracking().Include(item => item.Prizes);
+        var hackathon = Guid.TryParse(id, out var hackathonId)
+            ? await query.SingleOrDefaultAsync(item => item.Id == hackathonId, cancellationToken)
+            : await query.SingleOrDefaultAsync(item => item.Slug == id, cancellationToken);
+        if (hackathon is null) return Fail<HackathonResultDto>(EvaluationServiceError.NotFound, NotFoundMessage);
+        if (HackathonPhases.GetPhase(hackathon, DateTime.UtcNow) is HackathonPhase.Draft or HackathonPhase.Cancelled)
+        {
+            var company = accountId is null ? null : await companyAccessService.GetManagedCompanyAsync(accountId.Value, cancellationToken);
+            if (company?.CompanyId != hackathon.CompanyId) return Fail<HackathonResultDto>(EvaluationServiceError.NotFound, NotFoundMessage);
+        }
+        if (hackathon.ResultsPublishedAt is null) return new(true, new HackathonResultDto(hackathon.Id, hackathon.Title, false, 0, []));
+
+        var submissions = await dbContext.Submissions.AsNoTracking()
+            .Include(item => item.Team)
+            .Include(item => item.Participation).ThenInclude(item => item!.Account).ThenInclude(item => item.UserProfile)
+            .Where(item => item.HackathonId == hackathon.Id && item.FinalPosition != null)
+            .OrderBy(item => item.FinalPosition)
+            .ToListAsync(cancellationToken);
+        // Membros ativos de cada equipe, na ordem de entrada (como no painel da equipe), só com o nome.
+        var teamIds = submissions.Where(item => item.TeamId != null).Select(item => item.TeamId!.Value).ToList();
+        var members = await dbContext.Participations.AsNoTracking()
+            .Where(item => item.TeamId != null && teamIds.Contains(item.TeamId.Value) && item.LeftAt == null)
+            .OrderBy(item => item.JoinedAt)
+            .Select(item => new
+            {
+                TeamId = item.TeamId!.Value,
+                item.AccountId,
+                Name = item.Account.UserProfile != null ? item.Account.UserProfile.Name : UnnamedParticipant
+            })
+            .ToListAsync(cancellationToken);
+
+        var entries = new List<HackathonResultEntryDto>();
+        foreach (var submission in submissions)
+        {
+            var prize = PrizeFor(hackathon, submission.PrizePosition);
+            if (submission.TeamId is { } teamId)
+            {
+                var team = members.Where(item => item.TeamId == teamId).ToList();
+                entries.Add(new HackathonResultEntryDto(submission.FinalPosition!.Value, submission.Team!.Name, true,
+                    team.Select(item => item.Name).ToList(), submission.Score, prize, team.Any(item => item.AccountId == accountId)));
+                continue;
+            }
+            // Público: sem o e-mail que o ranking da empresa usa quando falta o perfil.
+            var name = submission.Participation?.Account.UserProfile?.Name ?? UnnamedParticipant;
+            entries.Add(new HackathonResultEntryDto(submission.FinalPosition!.Value, name, false, [name], submission.Score, prize,
+                accountId is not null && submission.Participation?.AccountId == accountId));
+        }
+        var total = ClassifiedTotal(submissions.Select(item => item.FinalPosition!.Value).ToList());
+        return new(true, new HackathonResultDto(hackathon.Id, hackathon.Title, true, total, entries));
+    }
+
+    // Total da classificação publicada; nunca fica abaixo da maior posição (prêmios sem vencedor deixam buracos).
+    public static int ClassifiedTotal(IReadOnlyCollection<int> positions) =>
+        positions.Count == 0 ? 0 : Math.Max(positions.Count, positions.Max());
+
+    // Prêmio da posição escolhida para a entrega; nulo para quem não foi premiado.
+    public static PrizeDto? PrizeFor(Hackathon hackathon, int? prizePosition) =>
+        prizePosition is { } position
+            ? HackathonService.ToPrizeDtos(hackathon.Prizes.Where(item => item.Position == position)).SingleOrDefault()
+            : null;
 
     // Nota e vencedores só mudam depois do fim das submissões, enquanto o resultado não foi publicado.
     public static bool CanEvaluate(Hackathon hackathon, DateTime now) =>
