@@ -55,13 +55,18 @@ builder.Services.AddScoped<ISubmissionService, SubmissionService>();
 builder.Services.AddScoped<IEvaluationService, EvaluationService>();
 builder.Services.AddScoped<IHackathonModuleService, HackathonModuleService>();
 
+// Origens liberadas no CORS: Cors:Origins no appsettings ou Cors__Origins__0, Cors__Origins__1... por variável de ambiente.
+var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() is { Length: > 0 } origins
+    ? origins
+    : ["http://localhost:5173"];
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReact", policy => policy
-        .WithOrigins("http://localhost:5173")
+        .WithOrigins(corsOrigins)
         .AllowAnyHeader()
         .AllowAnyMethod());
 });
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
@@ -75,6 +80,8 @@ app.UseCors("AllowReact");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+// Usado pelas sondas do Kubernetes (liveness/readiness) e pelo docker compose.
+app.MapHealthChecks("/health");
 app.Run();
 
 // Exposto para os testes de integração (WebApplicationFactory<Program>).
