@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/*.user
+.git/
+.github/
+docs/
+k8s/
+DampCode_API.Tests/
+*.md
+Dockerfile
+.dockerignore
