@@ -1,0 +1,116 @@
+# CI/CD da API
+#
+#   Pull Request ou push  → testes + build da imagem (sem publicar)
+#   push na master        → publica a imagem no GHCR (tags :<sha> e :latest)
+#                         → se a variável K8S_DEPLOY = true: migrations (Job) e deploy no Kubernetes
+#
+# Configuração no GitHub (Settings → Secrets and variables → Actions):
+#   Secret   KUBE_CONFIG  kubeconfig do cluster em base64
+#   Variable K8S_DEPLOY   true para liberar o deploy
+# Manifests do cluster: repositório DAMP-Code/DAMPCode-Base, pasta k8s/.
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/damp-code/dampcode-api
+
+jobs:
+  testes:
+    name: Testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A API é net8.0 e os testes são net10.0.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Testes
+        run: dotnet test DampCode_API.Tests --configuration Release
+
+  imagem:
+    name: Imagem Docker
+    needs: testes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLICAR: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login no GitHub Container Registry
+        if: env.PUBLICAR == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (e push na master)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ env.PUBLICAR == 'true' }}
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy no Kubernetes
+    needs: imagem
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && vars.K8S_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    environment: producao
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
+    steps:
+      - name: Manifests do cluster (DAMPCode-Base)
+        uses: actions/checkout@v4
+        with:
+          repository: DAMP-Code/DAMPCode-Base
+          path: base
+
+      - uses: azure/setup-kubectl@v4
+
+      - name: Acesso ao cluster
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          echo "$KUBE_CONFIG" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+          chmod 600 "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      - name: Usa a imagem deste commit
+        run: sed -i "s|${IMAGE}:latest|${IMAGE}:${GITHUB_SHA}|" base/k8s/api.yaml base/k8s/migrations-job.yaml
+
+      - name: Migrations
+        run: |
+          kubectl -n dampcode delete job dampcode-migrations --ignore-not-found
+          kubectl -n dampcode apply -f base/k8s/migrations-job.yaml
+          if ! kubectl -n dampcode wait --for=condition=complete job/dampcode-migrations --timeout=300s; then
+            kubectl -n dampcode logs job/dampcode-migrations --all-containers || true
+            exit 1
+          fi
+
+      - name: Deploy da API
+        run: |
+          kubectl -n dampcode apply -f base/k8s/api.yaml
+          kubectl -n dampcode rollout status deployment/dampcode-api --timeout=300s
